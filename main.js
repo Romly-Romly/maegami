@@ -20,6 +20,7 @@
 const { app, BrowserWindow, Tray, Menu, dialog, screen, nativeImage, ipcMain, nativeTheme } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const i18n = require('./i18n');
 
 // 設定ファイルは OS 標準のユーザーデータ領域に置く。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
@@ -34,7 +35,10 @@ const maxLayers = 3;
 const globalDefaults = {
 	opacity: 0.5,
 	cursorMask: true,
-	maskRadius: 160
+	maskRadius: 160,
+	cursorTrail: false,
+	trailDuration: 3000,
+	language: 'system'
 };
 
 // レイヤー1枚ぶんの設定。各レイヤーは独立した再生エンジンとして、自分のメディア・大きさ・周期・影を持つ。
@@ -45,6 +49,7 @@ const layerDefaults = {
 	displayMode: 'contain',
 	sizePercent: 100,
 	cornerPercent: 0,
+	driftDirection: 'none',
 	displayEffect: 'none',
 	shadowX: 0,
 	shadowY: 14,
@@ -57,15 +62,25 @@ const layerDefaults = {
 };
 
 // 全体設定のうち、再生を止めずに描画側へその場で当てられるキー。不透明度はウィンドウの透明度更新だけで足りる。
-const globalDisplayKeys = ['opacity', 'cursorMask', 'maskRadius'];
+const globalDisplayKeys = ['opacity', 'cursorMask', 'maskRadius', 'cursorTrail', 'trailDuration'];
 
 // レイヤー設定のうち、再生中の一枚へその場で当てれば足りるキー。プレイリストの組み直しや再走査を伴わない大きさ・角丸・エフェクト・影がこれにあたる。
-const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
+const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'driftDirection', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
 
 let settings = { ...globalDefaults, layers: [{ ...layerDefaults }] };
 let win = null;
 let tray = null;
 let settingsWin = null;
+
+// 現在表示に使っている言語と、その辞書。言語設定や OS ロケールから configureLocale で決める。描画プロセスへは preload からの同期要求でこの辞書を渡す。
+let currentLocale = i18n.fallbackLocale;
+let currentDict = {};
+
+// メインプロセス側 (トレイ・ダイアログ・ウィンドウタイトル) の文言を引く。configureLocale を呼ぶまでは仮の辞書で動く。
+function t(key, vars)
+{
+	return i18n.translate(currentDict, key, vars);
+}
 
 // 最前面維持の押し上げ間隔 (ミリ秒) と、そのタイマーの識別子。
 const topmostInterval = 1500;
@@ -80,10 +95,10 @@ let lastCursor = null;
 
 // 一時停止の自動再開で選べる間隔。トレイのサブメニューをここから組み立てる。
 const resumeIntervals = [
-	{ label: '10分後に再開', minutes: 10 },
-	{ label: '30分後に再開', minutes: 30 },
-	{ label: '1時間後に再開', minutes: 60 },
-	{ label: '2時間後に再開', minutes: 120 }
+	{ key: 'tray.resume10', minutes: 10 },
+	{ key: 'tray.resume30', minutes: 30 },
+	{ key: 'tray.resume60', minutes: 60 },
+	{ key: 'tray.resume120', minutes: 120 }
 ];
 
 // 自動再開のタイマー識別子と、再開予定の時刻 (エポックミリ秒)。一時停止と同じく保存しない実行時状態で、再開予定が無い (無期限の一時停止・再生中) ときは resumeAt を null にする。
@@ -237,6 +252,33 @@ function saveSettings()
 
 
 
+// 言語設定と OS ロケールから表示言語を決め直し、対応する辞書を読み込む。起動時と、言語設定の変更時に呼ぶ。
+function configureLocale()
+{
+	currentLocale = i18n.resolveLocale(settings.language, app.getLocale());
+	currentDict = i18n.buildDict(currentLocale);
+}
+
+
+
+
+// オーバーレイと設定ウィンドウの両方を再読み込みする。言語の切り替えを描画プロセスへ反映するために使う。再読み込み時に preload が新しい辞書を取り直す。
+function reloadWindows()
+{
+	if (win && !win.isDestroyed())
+	{
+		win.webContents.reload();
+	}
+
+	if (settingsWin && !settingsWin.isDestroyed())
+	{
+		settingsWin.webContents.reload();
+	}
+}
+
+
+
+
 // 指定ディレクトリ直下から、対応拡張子のメディアファイル一覧を収集する。
 function scanMedia(dir)
 {
@@ -342,7 +384,7 @@ function pathToFileUrl(p)
 // 全体設定だけを取り出す。描画側へはレイヤー設定と分けて渡す。
 function globalState()
 {
-	return { opacity: settings.opacity, cursorMask: settings.cursorMask, maskRadius: settings.maskRadius, paused: settings.paused, resumeAt: resumeAt };
+	return { opacity: settings.opacity, cursorMask: settings.cursorMask, maskRadius: settings.maskRadius, cursorTrail: settings.cursorTrail, trailDuration: settings.trailDuration, paused: settings.paused, resumeAt: resumeAt };
 }
 
 
@@ -423,8 +465,17 @@ function syncWindowState()
 // 全体設定 (不透明度・くり抜き・一時停止) を更新し、保存して反映する。表示に属するキーだけの変更なら再生を止めずその場で当て、それ以外は状態を送り直す。
 function applyGlobal(patch)
 {
+	const languageChanged = patch.language !== undefined && patch.language !== settings.language;
+
 	settings = { ...settings, ...patch };
 	saveSettings();
+
+	// 言語が変わったら表示言語を決め直す。トレイは再構築で新しい言語へ更新し、両ウィンドウは再読み込みで反映する。
+	if (languageChanged)
+	{
+		configureLocale();
+	}
+
 	syncWindowState();
 
 	const keys = Object.keys(patch);
@@ -442,6 +493,11 @@ function applyGlobal(patch)
 
 	buildTray();
 	pushSettingsState();
+
+	if (languageChanged)
+	{
+		reloadWindows();
+	}
 }
 
 
@@ -601,7 +657,7 @@ function openSettings()
 		height: 580,
 		minWidth: 640,
 		minHeight: 480,
-		title: '前紙 の設定',
+		title: t('settings.windowTitle'),
 		// 同梱したアプリアイコンを明示する。ビルド資材ではなく同梱物の icon.ico を指すことで、開発実行でも配布版でも同じアイコンが出る。
 		icon: path.join(__dirname, 'assets', 'icon.ico'),
 		autoHideMenuBar: true,
@@ -884,7 +940,7 @@ function chooseDirectory(index)
 	}
 
 	const parent = (settingsWin && !settingsWin.isDestroyed()) ? settingsWin : null;
-	const options = { title: '表示する画像・動画のフォルダを選択', properties: ['openDirectory'] };
+	const options = { title: t('dialog.chooseFolder'), properties: ['openDirectory'] };
 	const picked = parent ? dialog.showOpenDialogSync(parent, options) : dialog.showOpenDialogSync(options);
 
 	if (picked && picked.length > 0)
@@ -935,7 +991,6 @@ function buildTray()
 	if (!tray)
 	{
 		tray = new Tray(createTrayIcon());
-		tray.setToolTip('前紙');
 		tray.on('click', openSettings);
 	}
 	else
@@ -944,38 +999,42 @@ function buildTray()
 		tray.setImage(createTrayIcon());
 	}
 
+	// ツールチップは言語の切り替えでも変わるため、buildTray のたびに現在の言語へ合わせて設定し直す。
+	tray.setToolTip(t('app.name'));
+
 	// 自動再開の各間隔を選ぶサブメニュー。再生中・停止中のどちらからでも、選べば一時停止のうえタイマーを仕掛ける。
 	const resumeSubmenu = resumeIntervals.map((item) => ({
-		label: item.label,
+		label: t(item.key),
 		click: () => setPaused(true, item.minutes)
 	}));
 
 	// 再生・一時停止まわりの項目。再生中は一時停止の手段を、停止中は再生と自動再開予定の確認・取り消しを出す。
 	const playbackItems = settings.paused
 		? [
-			{ label: '再生', click: () => setPaused(false) },
-			{ label: '自動再開を設定', submenu: resumeSubmenu }
+			{ label: t('tray.play'), click: () => setPaused(false) },
+			{ label: t('tray.setAutoResume'), submenu: resumeSubmenu }
 		]
 		: [
-			{ label: '一時停止', click: () => setPaused(true, 0) },
-			{ label: '一時停止 (自動再開)', submenu: resumeSubmenu }
+			{ label: t('tray.next'), click: advanceOverlay },
+			{ label: t('tray.pause'), click: () => setPaused(true, 0) },
+			{ label: t('tray.pauseAutoResume'), submenu: resumeSubmenu }
 		];
 
 	if (settings.paused && resumeAt)
 	{
-		playbackItems.push({ label: formatResumeAt(resumeAt) + ' に再開予定', enabled: false });
-		playbackItems.push({ label: '自動再開を取り消す', click: () => setPaused(true, 0) });
+		playbackItems.push({ label: t('tray.resumeScheduled', { time: formatResumeAt(resumeAt) }), enabled: false });
+		playbackItems.push({ label: t('tray.cancelAutoResume'), click: () => setPaused(true, 0) });
 	}
 
 	const menu = Menu.buildFromTemplate([
-		{ label: '前紙 ' + app.getVersion(), enabled: false },
+		{ label: t('tray.header', { version: app.getVersion() }), enabled: false },
 		{ type: 'separator' },
-		{ label: 'レイヤー: ' + settings.layers.length + ' 枚', enabled: false },
-		{ label: '設定...', click: openSettings },
+		{ label: t('tray.layers', { count: settings.layers.length }), enabled: false },
+		{ label: t('tray.settings'), click: openSettings },
 		{ type: 'separator' },
 		...playbackItems,
 		{ type: 'separator' },
-		{ label: '終了', click: () => app.quit() }
+		{ label: t('tray.quit'), click: () => app.quit() }
 	]);
 
 	tray.setContextMenu(menu);
@@ -990,9 +1049,36 @@ function buildTray()
 
 
 
+// トレイの「次へ」から呼ばれ、オーバーレイへ画像送りを指示する。ウィンドウが無い、または破棄済みのときは何もしない。
+function advanceOverlay()
+{
+	if (win && !win.isDestroyed())
+	{
+		win.webContents.send('advance');
+	}
+}
+
+
+
+
+
+
+
+
+
+
 function main()
 {
 	loadSettings();
+
+	// 設定の言語と OS ロケールから表示言語を決め、辞書を読み込む。app.getLocale はアプリの ready 後でないと正しい値を返さないため、ここで行う。
+	configureLocale();
+
+	// preload からの同期要求に応え、現在の言語と辞書を返す。描画プロセスはこれを使って起動直後から文言を翻訳する。
+	ipcMain.on('i18n:get', (event) =>
+	{
+		event.returnValue = { locale: currentLocale, dict: currentDict };
+	});
 
 	// 描画プロセスからの状態要求に応える。
 	ipcMain.on('request-state', () => pushState());

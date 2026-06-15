@@ -1,7 +1,7 @@
 {
 	"name": "maegami",
-	"version": "1.0.0",
-	"description": "デスクトップ最前面に常駐し、画像／動画スライドショーを楽しめる半透明の壁紙チェンジャー風オーバーレイ。",
+	"version": "1.2.0",
+	"description": "A translucent, always-on-top wallpaper-changer-style overlay for image and video slideshows on your desktop.",
 	"main": "main.js",
 	"author": "Romly",
 	"license": "GPL-3.0-only",
@@ -19,6 +19,8 @@
 		"files": [
 			"main.js",
 			"preload.js",
+			"i18n.js",
+			"locales/**/*",
 			"renderer/**/*",
 			"assets/**/*"
 		],

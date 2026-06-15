@@ -1,0 +1,121 @@
+{
+	"app.name": "Maegami",
+
+	"settings.windowTitle": "Maegami Settings",
+	"settings.version": "Version {version}",
+
+	"global.title": "All Layers",
+	"general.title": "General",
+	"global.opacity.title": "Opacity",
+	"global.opacity.desc": "How transparent the whole window is. Applies to every layer.",
+	"global.cursorMask.title": "Peek around the cursor",
+	"global.cursorMask.desc": "Cut a hole in the image around the cursor so you can peek at the desktop below. The hole goes through all layers.",
+	"global.maskRadius.title": "Peek hole radius",
+	"global.maskRadius.desc": "Size of the cut-out circle. The edge blur scales along with it.",
+	"global.cursorTrail.title": "Leave a trail for a while",
+	"global.cursorTrail.desc": "Instead of closing right away, the area you sweep with the cursor stays cut open like paint, so you can keep peeking. The trail closes back up gradually over time.",
+	"global.trailDuration.title": "Time until the trail fades",
+	"global.trailDuration.desc": "How long it takes a trail to close completely. Longer keeps the painted area visible for more time.",
+	"global.trailDuration.unit": "{n}s",
+	"global.language.title": "Language",
+	"global.language.desc": "Display language for the menu and settings window.",
+	"global.language.system": "Follow system",
+	"global.language.ja": "日本語",
+	"global.language.en": "English",
+
+	"sidebar.addLayer": "＋ Add layer",
+
+	"layer.navItem": "Layer {n}",
+	"layer.title": "Layer {n}",
+	"layer.hint": "Higher-numbered layers stack in front. Varying the drop shadow offset and blur per layer adds a sense of depth.",
+
+	"group.media": "Media",
+	"group.display": "Display",
+	"group.playback": "Playback",
+
+	"layer.folder.title": "Folder to display",
+	"layer.folder.noFolder": "Not selected",
+	"layer.folder.choose": "Change...",
+
+	"layer.mediaKind.title": "Media type",
+	"layer.mediaKind.desc": "Whether to show both images and videos, or limit to just one of them.",
+	"layer.mediaKind.both": "Images and videos",
+	"layer.mediaKind.image": "Images only",
+	"layer.mediaKind.video": "Videos only",
+
+	"layer.shuffle.title": "Shuffle",
+	"layer.shuffle.desc": "Randomize the display order.",
+
+	"layer.displayMode.title": "Display mode",
+	"layer.displayMode.desc": "Cover the whole screen, fit the entire image, or place it at a random position.",
+	"layer.displayMode.cover": "Cover screen",
+	"layer.displayMode.contain": "Fit image",
+	"layer.displayMode.random": "Random placement",
+
+	"layer.size.title": "Display size",
+	"layer.size.desc": "Image size relative to the desktop.",
+
+	"layer.corner.title": "Rounded corners",
+	"layer.corner.desc": "How much to round the image's corners. Based on the desktop's shorter edge, and automatically eased for images shown small.",
+
+	"layer.drift.title": "Slow drift",
+	"layer.drift.desc": "Slowly move the shown image in the chosen direction. It glides during fades and creeps while displayed.",
+	"layer.drift.none": "None",
+	"layer.drift.down": "Top to bottom",
+	"layer.drift.right": "Left to right",
+
+	"layer.effect.title": "Effect",
+	"layer.effect.desc": "Blur the edges to blend into the desktop, or cast a shadow to lift it up.",
+	"layer.effect.none": "None",
+	"layer.effect.feather": "Feather",
+	"layer.effect.shadow": "Drop shadow",
+
+	"layer.shadowX.title": "Shadow X offset",
+	"layer.shadowX.desc": "How far to shift the shadow horizontally. Positive falls to the right, negative to the left.",
+	"layer.shadowY.title": "Shadow Y offset",
+	"layer.shadowY.desc": "How far to shift the shadow vertically. Positive falls down, negative falls up.",
+	"layer.shadowBlur.title": "Shadow blur",
+	"layer.shadowBlur.desc": "How soft the shadow's edge is. Larger spreads softer and looks higher above.",
+	"layer.shadowOpacity.title": "Shadow strength",
+	"layer.shadowOpacity.desc": "Opacity of the shadow. Stronger looks more lifted toward you.",
+
+	"layer.displayDuration.title": "Display interval",
+	"layer.displayDuration.desc": "How long a single item stays on screen.",
+
+	"layer.videoPlayFull.title": "Play videos to the end",
+	"layer.videoPlayFull.desc": "Videos longer than the display interval won't switch until one playback finishes.",
+
+	"layer.fadeDuration.title": "Fade duration",
+	"layer.fadeDuration.desc": "How long items fade out and in when switching.",
+
+	"layer.gapDuration.title": "Switch gap",
+	"layer.gapDuration.desc": "Idle time between the fade-out and the next item.",
+
+	"layer.remove.title": "Delete this layer",
+	"layer.remove.desc": "Discard this layer's settings and remove it from the display.",
+	"layer.remove.button": "Delete",
+
+	"unit.seconds": "{value} s",
+
+	"dialog.chooseFolder": "Choose a folder of images and videos to display",
+
+	"tray.header": "Maegami {version}",
+	"tray.layers": "Layers: {count}",
+	"tray.settings": "Settings...",
+	"tray.play": "Play",
+	"tray.pause": "Pause",
+	"tray.next": "Next",
+	"tray.pauseAutoResume": "Pause (auto-resume)",
+	"tray.setAutoResume": "Set auto-resume",
+	"tray.cancelAutoResume": "Cancel auto-resume",
+	"tray.resumeScheduled": "Resumes at {time}",
+	"tray.quit": "Quit",
+	"tray.resume10": "Resume in 10 min",
+	"tray.resume30": "Resume in 30 min",
+	"tray.resume60": "Resume in 1 hour",
+	"tray.resume120": "Resume in 2 hours",
+
+	"overlay.initial": "No folder selected — choose an image/video folder from the tray icon",
+	"overlay.noFolder": "No folder selected — choose an image/video folder for each layer in Settings",
+	"overlay.noMedia": "No displayable images or videos were found"
+}

@@ -25,24 +25,25 @@
 <body>
 	<div class="layout">
 		<nav class="sidebar">
-			<div class="brand">前紙</div>
-			<button class="nav-item active" data-target="section-global">全体</button>
+			<div class="brand" data-i18n="app.name">前紙</div>
+			<button class="nav-item active" data-target="section-global" data-i18n="global.title">レイヤー共通</button>
 			<div id="layer-nav"></div>
-			<button id="add-layer" class="add-layer">＋ レイヤーを追加</button>
+			<button id="add-layer" class="add-layer" data-i18n="sidebar.addLayer">＋ レイヤーを追加</button>
+			<button class="nav-item" data-target="section-general" data-i18n="general.title">全般</button>
 			<div class="about">
-				<div class="about-name">前紙</div>
+				<div class="about-name" data-i18n="app.name">前紙</div>
 				<div class="about-version" id="app-version"></div>
 				<div class="about-copyright">© 2026 Romly</div>
 			</div>
 		</nav>
 		<main class="content">
 			<section id="section-global" class="section active">
-				<h1>全体</h1>
+				<h1 data-i18n="global.title">レイヤー共通</h1>
 				<div class="card">
 					<div class="row">
 						<div class="row-text">
-							<div class="row-title">不透明度</div>
-							<div class="row-desc">ウィンドウ全体の透け具合。すべてのレイヤーに共通で掛かる。</div>
+							<div class="row-title" data-i18n="global.opacity.title">不透明度</div>
+							<div class="row-desc" data-i18n="global.opacity.desc">ウィンドウ全体の透け具合。すべてのレイヤーに共通で掛かる。</div>
 						</div>
 						<div class="row-control">
 							<input type="range" id="opacity" min="10" max="100" step="5">
@@ -53,8 +54,8 @@
 				<div class="card">
 					<div class="row">
 						<div class="row-text">
-							<div class="row-title">マウスの周りを覗く</div>
-							<div class="row-desc">カーソルの周りだけ画像をくり抜いて、下のデスクトップを覗けるようにする。全レイヤーを貫いて穴を開ける。</div>
+							<div class="row-title" data-i18n="global.cursorMask.title">マウスの周りを覗く</div>
+							<div class="row-desc" data-i18n="global.cursorMask.desc">カーソルの周りだけ画像をくり抜いて、下のデスクトップを覗けるようにする。全レイヤーを貫いて穴を開ける。</div>
 						</div>
 						<div class="row-control">
 							<label class="switch">
@@ -65,53 +66,99 @@
 					</div>
 					<div class="sub-row hidden" id="mask-radius-row">
 						<div class="row-text">
-							<div class="row-title">覗き穴の半径</div>
-							<div class="row-desc">くり抜く円の大きさ。縁のぼかしも合わせて拡大縮小する。</div>
+							<div class="row-title" data-i18n="global.maskRadius.title">覗き穴の半径</div>
+							<div class="row-desc" data-i18n="global.maskRadius.desc">くり抜く円の大きさ。縁のぼかしも合わせて拡大縮小する。</div>
 						</div>
 						<div class="row-control">
 							<input type="range" id="mask-radius" min="60" max="400" step="10">
 							<span class="value" id="mask-radius-value">160px</span>
 						</div>
 					</div>
+					<div class="sub-row hidden" id="cursor-trail-row">
+						<div class="row-text">
+							<div class="row-title" data-i18n="global.cursorTrail.title">通った跡をしばらく残す</div>
+							<div class="row-desc" data-i18n="global.cursorTrail.desc">カーソルでなぞった範囲のくり抜きをすぐに閉じず、ペイントのように塗り残してしばらく覗けるようにする。残した跡は時間とともに少しずつ閉じていく。</div>
+						</div>
+						<div class="row-control">
+							<label class="switch">
+								<input type="checkbox" id="cursor-trail">
+								<span class="track"></span>
+							</label>
+						</div>
+					</div>
+					<div class="sub-row hidden" id="trail-duration-row">
+						<div class="row-text">
+							<div class="row-title" data-i18n="global.trailDuration.title">跡が消えるまでの時間</div>
+							<div class="row-desc" data-i18n="global.trailDuration.desc">なぞった跡が完全に閉じるまでの長さ。長いほど塗った範囲が長く残る。</div>
+						</div>
+						<div class="row-control">
+							<input type="range" id="trail-duration" min="500" max="10000" step="250">
+							<span class="value" id="trail-duration-value">3.0秒</span>
+						</div>
+					</div>
 				</div>
 			</section>
 			<div id="layer-sections"></div>
+			<section id="section-general" class="section">
+				<h1 data-i18n="general.title">全般</h1>
+				<div class="card">
+					<div class="row">
+						<div class="row-text">
+							<div class="row-title" data-i18n="global.language.title">言語</div>
+							<div class="row-desc" data-i18n="global.language.desc">メニューと設定画面の表示言語。</div>
+						</div>
+						<div class="row-control">
+							<div class="dropdown language" data-value="system">
+								<button type="button" class="dropdown-toggle">
+									<span class="dropdown-label" data-i18n="global.language.system">システムに従う</span>
+									<span class="dropdown-caret" aria-hidden="true"></span>
+								</button>
+								<ul class="dropdown-menu" role="listbox">
+									<li class="dropdown-option" data-value="system" role="option" data-i18n="global.language.system">システムに従う</li>
+									<li class="dropdown-option" data-value="ja" role="option" data-i18n="global.language.ja">日本語</li>
+									<li class="dropdown-option" data-value="en" role="option" data-i18n="global.language.en">English</li>
+								</ul>
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
 		</main>
 	</div>
 
 	<template id="layer-template">
 		<section class="section layer-section">
 			<h1 class="layer-title">レイヤー</h1>
-			<p class="layer-hint">番号が大きいレイヤーほど手前に重なります。ドロップシャドウのずらしとぼかしをレイヤーごとに変えると奥行きが出ます。</p>
+			<p class="layer-hint" data-i18n="layer.hint">番号が大きいレイヤーほど手前に重なります。ドロップシャドウのずらしとぼかしをレイヤーごとに変えると奥行きが出ます。</p>
 
-			<h2 class="group-title">メディア</h2>
+			<h2 class="group-title" data-i18n="group.media">メディア</h2>
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">表示するフォルダ</div>
-						<div class="row-desc media-dir">未選択</div>
+						<div class="row-title" data-i18n="layer.folder.title">表示するフォルダ</div>
+						<div class="row-desc media-dir" data-i18n="layer.folder.noFolder">未選択</div>
 					</div>
 					<div class="row-control">
-						<button class="btn choose-dir">変更...</button>
+						<button class="btn choose-dir" data-i18n="layer.folder.choose">変更...</button>
 					</div>
 				</div>
 			</div>
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">メディアの種類</div>
-						<div class="row-desc">表示するメディアを画像と動画の両方にするか、どちらか一方に絞るか。</div>
+						<div class="row-title" data-i18n="layer.mediaKind.title">メディアの種類</div>
+						<div class="row-desc" data-i18n="layer.mediaKind.desc">表示するメディアを画像と動画の両方にするか、どちらか一方に絞るか。</div>
 					</div>
 					<div class="row-control">
 						<div class="dropdown media-kind" data-value="both">
 							<button type="button" class="dropdown-toggle">
-								<span class="dropdown-label">画像と動画</span>
+								<span class="dropdown-label" data-i18n="layer.mediaKind.both">画像と動画</span>
 								<span class="dropdown-caret" aria-hidden="true"></span>
 							</button>
 							<ul class="dropdown-menu" role="listbox">
-								<li class="dropdown-option" data-value="both" role="option">画像と動画</li>
-								<li class="dropdown-option" data-value="image" role="option">画像のみ</li>
-								<li class="dropdown-option" data-value="video" role="option">動画のみ</li>
+								<li class="dropdown-option" data-value="both" role="option" data-i18n="layer.mediaKind.both">画像と動画</li>
+								<li class="dropdown-option" data-value="image" role="option" data-i18n="layer.mediaKind.image">画像のみ</li>
+								<li class="dropdown-option" data-value="video" role="option" data-i18n="layer.mediaKind.video">動画のみ</li>
 							</ul>
 						</div>
 					</div>
@@ -120,8 +167,8 @@
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">シャッフル</div>
-						<div class="row-desc">表示順をランダムにする。</div>
+						<div class="row-title" data-i18n="layer.shuffle.title">シャッフル</div>
+						<div class="row-desc" data-i18n="layer.shuffle.desc">表示順をランダムにする。</div>
 					</div>
 					<div class="row-control">
 						<label class="switch">
@@ -132,25 +179,25 @@
 				</div>
 			</div>
 
-			<h2 class="group-title">表示</h2>
+			<h2 class="group-title" data-i18n="group.display">表示</h2>
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">表示方法</div>
-						<div class="row-desc">画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置に置くか。</div>
+						<div class="row-title" data-i18n="layer.displayMode.title">表示方法</div>
+						<div class="row-desc" data-i18n="layer.displayMode.desc">画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置に置くか。</div>
 					</div>
 					<div class="row-control">
 						<div class="segmented display-mode">
-							<button data-value="cover">画面を覆う</button>
-							<button data-value="contain">画像を収める</button>
-							<button data-value="random">ランダム配置</button>
+							<button data-value="cover" data-i18n="layer.displayMode.cover">画面を覆う</button>
+							<button data-value="contain" data-i18n="layer.displayMode.contain">画像を収める</button>
+							<button data-value="random" data-i18n="layer.displayMode.random">ランダム配置</button>
 						</div>
 					</div>
 				</div>
 				<div class="sub-row size-row">
 					<div class="row-text">
-						<div class="row-title">表示サイズ</div>
-						<div class="row-desc">デスクトップに対する画像の大きさ。</div>
+						<div class="row-title" data-i18n="layer.size.title">表示サイズ</div>
+						<div class="row-desc" data-i18n="layer.size.desc">デスクトップに対する画像の大きさ。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="size-percent" min="2" max="100" step="2">
@@ -159,39 +206,58 @@
 				</div>
 				<div class="sub-row corner-row">
 					<div class="row-text">
-						<div class="row-title">角丸</div>
-						<div class="row-desc">画像の四隅を丸める大きさ。デスクトップの短辺を基準にし、小さく表示された画像では自動で控えめになる。</div>
+						<div class="row-title" data-i18n="layer.corner.title">角丸</div>
+						<div class="row-desc" data-i18n="layer.corner.desc">画像の四隅を丸める大きさ。デスクトップの短辺を基準にし、小さく表示された画像では自動で控えめになる。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="corner-percent" min="0" max="5" step="0.2">
 						<span class="value corner-percent-value">0%</span>
 					</div>
 				</div>
+				<div class="sub-row drift-row hidden">
+					<div class="row-text">
+						<div class="row-title" data-i18n="layer.drift.title">ゆっくり移動</div>
+						<div class="row-desc" data-i18n="layer.drift.desc">表示中の画像を選んだ向きへ少しずつ動かす。フェードのある間はスッと、表示中はごくゆっくり進む。</div>
+					</div>
+					<div class="row-control">
+						<div class="dropdown drift-direction" data-value="none">
+							<button type="button" class="dropdown-toggle">
+								<span class="dropdown-label" data-i18n="layer.drift.none">なし</span>
+								<span class="dropdown-caret" aria-hidden="true"></span>
+							</button>
+							<ul class="dropdown-menu" role="listbox">
+								<li class="dropdown-option" data-value="none" role="option" data-i18n="layer.drift.none">なし</li>
+								<li class="dropdown-option" data-value="down" role="option" data-i18n="layer.drift.down">上から下</li>
+								<li class="dropdown-option" data-value="right" role="option" data-i18n="layer.drift.right">左から右</li>
+							</ul>
+						</div>
+					</div>
+				</div>
 			</div>
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">エフェクト</div>
-						<div class="row-desc">縁をぼかしてデスクトップに馴染ませるか、影を落として浮かせるか。</div>
+						<div class="row-title" data-i18n="layer.effect.title">エフェクト</div>
+						<div class="row-desc" data-i18n="layer.effect.desc">縁をぼかしてデスクトップに馴染ませるか、影を落として浮かせるか。</div>
 					</div>
 					<div class="row-control">
 						<div class="dropdown display-effect" data-value="none">
 							<button type="button" class="dropdown-toggle">
-								<span class="dropdown-label">なし</span>
+								<span class="dropdown-label" data-i18n="layer.effect.none">なし</span>
 								<span class="dropdown-caret" aria-hidden="true"></span>
 							</button>
 							<ul class="dropdown-menu" role="listbox">
-								<li class="dropdown-option" data-value="none" role="option">なし</li>
-								<li class="dropdown-option" data-value="feather" role="option">ぼかし</li>
-								<li class="dropdown-option" data-value="shadow" role="option">ドロップシャドウ</li>
+								<li class="dropdown-option" data-value="none" role="option" data-i18n="layer.effect.none">なし</li>
+								<li class="dropdown-option" data-value="feather" role="option" data-i18n="layer.effect.feather">ぼかし</li>
+								<li class="dropdown-option" data-value="shadow" role="option" data-i18n="layer.effect.shadow">ドロップシャドウ</li>
 							</ul>
 						</div>
 					</div>
 				</div>
 				<div class="sub-row shadow-row hidden">
 					<div class="row-text">
-						<div class="row-title">影の横ずらし</div>
-						<div class="row-desc">影を左右へずらす量。正の値で右、負の値で左へ落ちる。</div>
+						<div class="row-title" data-i18n="layer.shadowX.title">影の横ずらし</div>
+						<div class="row-desc" data-i18n="layer.shadowX.desc">影を左右へずらす量。正の値で右、負の値で左へ落ちる。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="shadow-x" min="-60" max="60" step="1">
@@ -200,8 +266,8 @@
 				</div>
 				<div class="sub-row shadow-row hidden">
 					<div class="row-text">
-						<div class="row-title">影の縦ずらし</div>
-						<div class="row-desc">影を上下へずらす量。正の値で下、負の値で上へ落ちる。</div>
+						<div class="row-title" data-i18n="layer.shadowY.title">影の縦ずらし</div>
+						<div class="row-desc" data-i18n="layer.shadowY.desc">影を上下へずらす量。正の値で下、負の値で上へ落ちる。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="shadow-y" min="-60" max="60" step="1">
@@ -210,8 +276,8 @@
 				</div>
 				<div class="sub-row shadow-row hidden">
 					<div class="row-text">
-						<div class="row-title">影のぼかし</div>
-						<div class="row-desc">影の輪郭のにじみ具合。大きいほど柔らかく広がり、遠くに浮いて見える。</div>
+						<div class="row-title" data-i18n="layer.shadowBlur.title">影のぼかし</div>
+						<div class="row-desc" data-i18n="layer.shadowBlur.desc">影の輪郭のにじみ具合。大きいほど柔らかく広がり、遠くに浮いて見える。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="shadow-blur" min="0" max="80" step="1">
@@ -220,8 +286,8 @@
 				</div>
 				<div class="sub-row shadow-row hidden">
 					<div class="row-text">
-						<div class="row-title">影の濃さ</div>
-						<div class="row-desc">影の不透明度。濃いほど手前に強く浮いて見える。</div>
+						<div class="row-title" data-i18n="layer.shadowOpacity.title">影の濃さ</div>
+						<div class="row-desc" data-i18n="layer.shadowOpacity.desc">影の不透明度。濃いほど手前に強く浮いて見える。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="shadow-opacity" min="0" max="100" step="5">
@@ -230,12 +296,12 @@
 				</div>
 			</div>
 
-			<h2 class="group-title">再生</h2>
+			<h2 class="group-title" data-i18n="group.playback">再生</h2>
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">表示間隔</div>
-						<div class="row-desc">1 枚を表示し続ける時間。</div>
+						<div class="row-title" data-i18n="layer.displayDuration.title">表示間隔</div>
+						<div class="row-desc" data-i18n="layer.displayDuration.desc">1 枚を表示し続ける時間。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="display-duration" min="1" max="120" step="1">
@@ -246,8 +312,8 @@
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">動画を最後まで再生</div>
-						<div class="row-desc">表示間隔より長い動画は、一度の再生が終わるまで切り替えない。</div>
+						<div class="row-title" data-i18n="layer.videoPlayFull.title">動画を最後まで再生</div>
+						<div class="row-desc" data-i18n="layer.videoPlayFull.desc">表示間隔より長い動画は、一度の再生が終わるまで切り替えない。</div>
 					</div>
 					<div class="row-control">
 						<label class="switch">
@@ -260,8 +326,8 @@
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">フェード時間</div>
-						<div class="row-desc">切り替え時に薄れ・現れる時間。</div>
+						<div class="row-title" data-i18n="layer.fadeDuration.title">フェード時間</div>
+						<div class="row-desc" data-i18n="layer.fadeDuration.desc">切り替え時に薄れ・現れる時間。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="fade-duration" min="0" max="5" step="0.1">
@@ -272,8 +338,8 @@
 			<div class="card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">切り替え間隔</div>
-						<div class="row-desc">フェードアウトから次の表示までの空き時間。</div>
+						<div class="row-title" data-i18n="layer.gapDuration.title">切り替え間隔</div>
+						<div class="row-desc" data-i18n="layer.gapDuration.desc">フェードアウトから次の表示までの空き時間。</div>
 					</div>
 					<div class="row-control">
 						<input type="range" class="gap-duration" min="0" max="3" step="0.1">
@@ -286,11 +352,11 @@
 			<div class="card layer-remove-card">
 				<div class="row">
 					<div class="row-text">
-						<div class="row-title">このレイヤーを削除</div>
-						<div class="row-desc">このレイヤーの設定を消し、表示から取り除く。</div>
+						<div class="row-title" data-i18n="layer.remove.title">このレイヤーを削除</div>
+						<div class="row-desc" data-i18n="layer.remove.desc">このレイヤーの設定を消し、表示から取り除く。</div>
 					</div>
 					<div class="row-control">
-						<button class="btn danger remove-layer">削除</button>
+						<button class="btn danger remove-layer" data-i18n="layer.remove.button">削除</button>
 					</div>
 				</div>
 			</div>

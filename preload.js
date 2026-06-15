@@ -19,6 +19,32 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+// 現在の言語と辞書をメインプロセスから同期的に取り寄せる。描画プロセスのスクリプトが走り出す前に辞書を用意し、起動直後から文言を翻訳できるようにする。サンドボックス下の preload では独自モジュールを require できないため、翻訳処理はここに小さく持つ。
+const i18nState = ipcRenderer.sendSync('i18n:get');
+
+// 辞書からキーに対応する文言を引き、{name} 形式のプレースホルダを vars の値で差し替える。キーが辞書に無い場合はキー文字列をそのまま返す。
+function translate(key, vars)
+{
+	const dict = i18nState && i18nState.dict ? i18nState.dict : {};
+	let text = dict[key] !== undefined ? dict[key] : key;
+
+	if (vars)
+	{
+		for (const name of Object.keys(vars))
+		{
+			text = text.split('{' + name + '}').join(String(vars[name]));
+		}
+	}
+
+	return text;
+}
+
+// 描画プロセスへ、現在の言語と翻訳関数を公開する。
+contextBridge.exposeInMainWorld('maegamiI18n', {
+	locale: i18nState ? i18nState.locale : 'ja',
+	t: translate
+});
+
 // 描画プロセスへは状態購読と再要求の口だけを公開する。
 contextBridge.exposeInMainWorld('maegami', {
 	onState: (callback) =>
@@ -32,6 +58,10 @@ contextBridge.exposeInMainWorld('maegami', {
 	onCursor: (callback) =>
 	{
 		ipcRenderer.on('cursor', (event, pos) => callback(pos));
+	},
+	onAdvance: (callback) =>
+	{
+		ipcRenderer.on('advance', () => callback());
 	},
 	requestState: () =>
 	{

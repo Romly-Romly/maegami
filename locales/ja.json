@@ -1,0 +1,121 @@
+{
+	"app.name": "前紙",
+
+	"settings.windowTitle": "前紙 の設定",
+	"settings.version": "バージョン {version}",
+
+	"global.title": "レイヤー共通",
+	"general.title": "全般",
+	"global.opacity.title": "不透明度",
+	"global.opacity.desc": "ウィンドウ全体の透け具合。すべてのレイヤーに共通で掛かる。",
+	"global.cursorMask.title": "マウスの周りを覗く",
+	"global.cursorMask.desc": "カーソルの周りだけ画像をくり抜いて、下のデスクトップを覗けるようにする。全レイヤーを貫いて穴を開ける。",
+	"global.maskRadius.title": "覗き穴の半径",
+	"global.maskRadius.desc": "くり抜く円の大きさ。縁のぼかしも合わせて拡大縮小する。",
+	"global.cursorTrail.title": "通った跡をしばらく残す",
+	"global.cursorTrail.desc": "カーソルでなぞった範囲のくり抜きをすぐに閉じず、ペイントのように塗り残してしばらく覗けるようにする。残した跡は時間とともに少しずつ閉じていく。",
+	"global.trailDuration.title": "跡が消えるまでの時間",
+	"global.trailDuration.desc": "なぞった跡が完全に閉じるまでの長さ。長いほど塗った範囲が長く残る。",
+	"global.trailDuration.unit": "{n}秒",
+	"global.language.title": "言語",
+	"global.language.desc": "メニューと設定画面の表示言語。",
+	"global.language.system": "システムに従う",
+	"global.language.ja": "日本語",
+	"global.language.en": "English",
+
+	"sidebar.addLayer": "＋ レイヤーを追加",
+
+	"layer.navItem": "レイヤー {n}",
+	"layer.title": "レイヤー {n}",
+	"layer.hint": "番号が大きいレイヤーほど手前に重なります。ドロップシャドウのずらしとぼかしをレイヤーごとに変えると奥行きが出ます。",
+
+	"group.media": "メディア",
+	"group.display": "表示",
+	"group.playback": "再生",
+
+	"layer.folder.title": "表示するフォルダ",
+	"layer.folder.noFolder": "未選択",
+	"layer.folder.choose": "変更...",
+
+	"layer.mediaKind.title": "メディアの種類",
+	"layer.mediaKind.desc": "表示するメディアを画像と動画の両方にするか、どちらか一方に絞るか。",
+	"layer.mediaKind.both": "画像と動画",
+	"layer.mediaKind.image": "画像のみ",
+	"layer.mediaKind.video": "動画のみ",
+
+	"layer.shuffle.title": "シャッフル",
+	"layer.shuffle.desc": "表示順をランダムにする。",
+
+	"layer.displayMode.title": "表示方法",
+	"layer.displayMode.desc": "画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置に置くか。",
+	"layer.displayMode.cover": "画面を覆う",
+	"layer.displayMode.contain": "画像を収める",
+	"layer.displayMode.random": "ランダム配置",
+
+	"layer.size.title": "表示サイズ",
+	"layer.size.desc": "デスクトップに対する画像の大きさ。",
+
+	"layer.corner.title": "角丸",
+	"layer.corner.desc": "画像の四隅を丸める大きさ。デスクトップの短辺を基準にし、小さく表示された画像では自動で控えめになる。",
+
+	"layer.drift.title": "ゆっくり移動",
+	"layer.drift.desc": "表示中の画像を選んだ向きへ少しずつ動かす。フェードのある間はスッと、表示中はごくゆっくり進む。",
+	"layer.drift.none": "なし",
+	"layer.drift.down": "上から下",
+	"layer.drift.right": "左から右",
+
+	"layer.effect.title": "エフェクト",
+	"layer.effect.desc": "縁をぼかしてデスクトップに馴染ませるか、影を落として浮かせるか。",
+	"layer.effect.none": "なし",
+	"layer.effect.feather": "ぼかし",
+	"layer.effect.shadow": "ドロップシャドウ",
+
+	"layer.shadowX.title": "影の横ずらし",
+	"layer.shadowX.desc": "影を左右へずらす量。正の値で右、負の値で左へ落ちる。",
+	"layer.shadowY.title": "影の縦ずらし",
+	"layer.shadowY.desc": "影を上下へずらす量。正の値で下、負の値で上へ落ちる。",
+	"layer.shadowBlur.title": "影のぼかし",
+	"layer.shadowBlur.desc": "影の輪郭のにじみ具合。大きいほど柔らかく広がり、遠くに浮いて見える。",
+	"layer.shadowOpacity.title": "影の濃さ",
+	"layer.shadowOpacity.desc": "影の不透明度。濃いほど手前に強く浮いて見える。",
+
+	"layer.displayDuration.title": "表示間隔",
+	"layer.displayDuration.desc": "1 枚を表示し続ける時間。",
+
+	"layer.videoPlayFull.title": "動画を最後まで再生",
+	"layer.videoPlayFull.desc": "表示間隔より長い動画は、一度の再生が終わるまで切り替えない。",
+
+	"layer.fadeDuration.title": "フェード時間",
+	"layer.fadeDuration.desc": "切り替え時に薄れ・現れる時間。",
+
+	"layer.gapDuration.title": "切り替え間隔",
+	"layer.gapDuration.desc": "フェードアウトから次の表示までの空き時間。",
+
+	"layer.remove.title": "このレイヤーを削除",
+	"layer.remove.desc": "このレイヤーの設定を消し、表示から取り除く。",
+	"layer.remove.button": "削除",
+
+	"unit.seconds": "{value} 秒",
+
+	"dialog.chooseFolder": "表示する画像・動画のフォルダを選択",
+
+	"tray.header": "前紙 {version}",
+	"tray.layers": "レイヤー: {count} 枚",
+	"tray.settings": "設定...",
+	"tray.play": "再生",
+	"tray.pause": "一時停止",
+	"tray.next": "次へ",
+	"tray.pauseAutoResume": "一時停止 (自動再開)",
+	"tray.setAutoResume": "自動再開を設定",
+	"tray.cancelAutoResume": "自動再開を取り消す",
+	"tray.resumeScheduled": "{time} に再開予定",
+	"tray.quit": "終了",
+	"tray.resume10": "10分後に再開",
+	"tray.resume30": "30分後に再開",
+	"tray.resume60": "1時間後に再開",
+	"tray.resume120": "2時間後に再開",
+
+	"overlay.initial": "フォルダ未選択 — トレイアイコンから画像・動画フォルダを選んでください",
+	"overlay.noFolder": "フォルダ未選択 — 設定の各レイヤーで画像・動画フォルダを選んでください",
+	"overlay.noMedia": "表示できる画像・動画が見つかりませんでした"
+}

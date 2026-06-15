@@ -32,6 +32,26 @@ const cursorMaskEl = document.getElementById('cursor-mask');
 const maskRadiusRowEl = document.getElementById('mask-radius-row');
 const maskRadiusEl = document.getElementById('mask-radius');
 const maskRadiusValueEl = document.getElementById('mask-radius-value');
+const cursorTrailRowEl = document.getElementById('cursor-trail-row');
+const cursorTrailEl = document.getElementById('cursor-trail');
+const trailDurationRowEl = document.getElementById('trail-duration-row');
+const trailDurationEl = document.getElementById('trail-duration');
+const trailDurationValueEl = document.getElementById('trail-duration-value');
+
+// preload から渡された翻訳関数。キーを現在の言語の文言へ変換する。
+const t = window.maegamiI18n.t;
+
+// 全体セクションの言語選択ドロップダウン。init で組み立て、選択値の反映に使う。
+let languageDropdown = null;
+
+// root 以下の data-i18n を持つ要素へ、キーに対応する文言を流し込む。プレースホルダを含まない静的な文言だけを対象にする。
+function translateDom(root)
+{
+	for (const el of root.querySelectorAll('[data-i18n]'))
+	{
+		el.textContent = t(el.dataset.i18n);
+	}
+}
 
 // 現在組み上がっているレイヤーの数。受信した設定とこの数が食い違ったときだけレイヤーのUIを作り直す。
 let builtCount = -1;
@@ -138,10 +158,10 @@ function switchSection(targetId)
 
 
 
-// ミリ秒を「◯.◯ 秒」形式の文字列にする。
+// ミリ秒を「◯.◯ 秒」形式の文字列にする。秒の単位は言語に合わせて切り替える。
 function formatSeconds(ms)
 {
-	return (ms / 1000).toFixed(1) + ' 秒';
+	return t('unit.seconds', { value: (ms / 1000).toFixed(1) });
 }
 
 
@@ -181,6 +201,16 @@ function updateSizeRowsVisibility(root, mode)
 
 
 
+// ゆっくり移動はランダム配置のときだけ効くため、それ以外の表示方法では隠す。
+function updateDriftRowVisibility(root, mode)
+{
+	const hidden = (mode !== 'random');
+	root.querySelectorAll('.drift-row').forEach((row) => row.classList.toggle('hidden', hidden));
+}
+
+
+
+
 // 影のずらし・ぼかし・濃さはドロップシャドウを選んでいるときだけ効くため、それ以外では隠す。
 function updateShadowRowsVisibility(root, effect)
 {
@@ -191,10 +221,22 @@ function updateShadowRowsVisibility(root, effect)
 
 
 
-// 覗き穴の半径はくり抜きを有効にしているときだけ効くため、トグルが入ったときだけ下に開く。
-function updateMaskRowVisibility(on)
+// くり抜き配下の各行は、効くときだけ下に開く。半径と軌跡の入切はくり抜きが有効なときに、軌跡の時間と太さはさらに軌跡を残す設定が入っているときに見せる。
+function updateMaskRowVisibility(maskOn, trailOn)
 {
-	maskRadiusRowEl.classList.toggle('hidden', !on);
+	maskRadiusRowEl.classList.toggle('hidden', !maskOn);
+	cursorTrailRowEl.classList.toggle('hidden', !maskOn);
+
+	trailDurationRowEl.classList.toggle('hidden', !(maskOn && trailOn));
+}
+
+
+
+
+// 軌跡の寿命を「3.0秒」のような表示へ整える。単位は言語ごとの文言から引く。
+function formatTrailDuration(ms)
+{
+	return t('global.trailDuration.unit', { n: (ms / 1000).toFixed(1) });
 }
 
 
@@ -248,6 +290,7 @@ function wireLayer(root, index)
 		button.addEventListener('click', () =>
 		{
 			updateSizeRowsVisibility(root, button.dataset.value);
+			updateDriftRowVisibility(root, button.dataset.value);
 			sendLayer(index, { displayMode: button.dataset.value });
 		});
 	}
@@ -283,13 +326,16 @@ function buildLayers(count)
 		const navItem = document.createElement('button');
 		navItem.className = 'nav-item';
 		navItem.dataset.target = 'section-layer-' + i;
-		navItem.textContent = 'レイヤー ' + (i + 1);
+		navItem.textContent = t('layer.navItem', { n: i + 1 });
 		layerNav.appendChild(navItem);
 
 		const fragment = layerTemplate.content.cloneNode(true);
 		const section = fragment.querySelector('.section');
 		section.id = 'section-layer-' + i;
-		section.querySelector('.layer-title').textContent = 'レイヤー ' + (i + 1);
+
+		// テンプレート内の静的な文言を現在の言語へ訳す。レイヤー番号を含む見出しはこの後に個別に入れる。
+		translateDom(section);
+		section.querySelector('.layer-title').textContent = t('layer.title', { n: i + 1 });
 
 		// 最後の1枚は削除させない。削除セクション (空の見出しと削除カード) を隠して最低1枚を保つ。
 		const hideRemove = count <= 1;
@@ -297,6 +343,7 @@ function buildLayers(count)
 		section.querySelector('.layer-remove-card').classList.toggle('hidden', hideRemove);
 
 		const mediaKindDropdown = setupDropdown(section.querySelector('.media-kind'), (value) => sendLayer(i, { mediaKind: value }));
+		const driftDirectionDropdown = setupDropdown(section.querySelector('.drift-direction'), (value) => sendLayer(i, { driftDirection: value }));
 		const displayEffectDropdown = setupDropdown(section.querySelector('.display-effect'), (value) =>
 		{
 			updateShadowRowsVisibility(section, value);
@@ -306,7 +353,7 @@ function buildLayers(count)
 		wireLayer(section, i);
 		layerSections.appendChild(section);
 
-		layerUI.push({ root: section, mediaKindDropdown, displayEffectDropdown });
+		layerUI.push({ root: section, mediaKindDropdown, driftDirectionDropdown, displayEffectDropdown });
 	}
 }
 
@@ -329,7 +376,7 @@ function refreshLayer(index, layer)
 	const ui = layerUI[index];
 	const root = ui.root;
 
-	root.querySelector('.media-dir').textContent = layer.mediaDir || '未選択';
+	root.querySelector('.media-dir').textContent = layer.mediaDir || t('layer.folder.noFolder');
 	ui.mediaKindDropdown.setValue(layer.mediaKind || 'both');
 	root.querySelector('.shuffle').checked = !!layer.shuffle;
 
@@ -340,7 +387,9 @@ function refreshLayer(index, layer)
 
 	setSlider(root, '.size-percent', '.size-percent-value', layer.sizePercent, (v) => v + '%');
 	setSlider(root, '.corner-percent', '.corner-percent-value', layer.cornerPercent, (v) => v + '%');
+	ui.driftDirectionDropdown.setValue(layer.driftDirection || 'none');
 	updateSizeRowsVisibility(root, layer.displayMode);
+	updateDriftRowVisibility(root, layer.displayMode);
 
 	ui.displayEffectDropdown.setValue(layer.displayEffect || 'none');
 	setSlider(root, '.shadow-x', '.shadow-x-value', layer.shadowX, (v) => v + 'px');
@@ -383,7 +432,12 @@ function renderState(s)
 	cursorMaskEl.checked = !!s.cursorMask;
 	maskRadiusEl.value = s.maskRadius;
 	maskRadiusValueEl.textContent = s.maskRadius + 'px';
-	updateMaskRowVisibility(!!s.cursorMask);
+	cursorTrailEl.checked = !!s.cursorTrail;
+	trailDurationEl.value = s.trailDuration;
+	trailDurationValueEl.textContent = formatTrailDuration(s.trailDuration);
+	updateMaskRowVisibility(!!s.cursorMask, !!s.cursorTrail);
+
+	languageDropdown.setValue(s.language || 'system');
 
 	s.layers.forEach((layer, i) => refreshLayer(i, layer));
 
@@ -418,7 +472,7 @@ function wireEvents()
 
 	cursorMaskEl.addEventListener('change', () =>
 	{
-		updateMaskRowVisibility(cursorMaskEl.checked);
+		updateMaskRowVisibility(cursorMaskEl.checked, cursorTrailEl.checked);
 		send({ cursorMask: cursorMaskEl.checked });
 	});
 
@@ -427,6 +481,18 @@ function wireEvents()
 		maskRadiusValueEl.textContent = maskRadiusEl.value + 'px';
 	});
 	maskRadiusEl.addEventListener('change', () => send({ maskRadius: Number(maskRadiusEl.value) }));
+
+	cursorTrailEl.addEventListener('change', () =>
+	{
+		updateMaskRowVisibility(cursorMaskEl.checked, cursorTrailEl.checked);
+		send({ cursorTrail: cursorTrailEl.checked });
+	});
+
+	trailDurationEl.addEventListener('input', () =>
+	{
+		trailDurationValueEl.textContent = formatTrailDuration(Number(trailDurationEl.value));
+	});
+	trailDurationEl.addEventListener('change', () => send({ trailDuration: Number(trailDurationEl.value) }));
 }
 
 
@@ -434,13 +500,21 @@ function wireEvents()
 
 async function init()
 {
+	// 文書の言語を現在の表示言語に合わせ、固定文言のタイトルと静的要素を訳す。
+	document.documentElement.lang = window.maegamiI18n.locale;
+	document.title = t('settings.windowTitle');
+	translateDom(document);
+
+	// 全体セクションの言語選択を組み立て、選択時にメインプロセスへ通知する。言語を変えるとメイン側が両ウィンドウを再読み込みして反映する。
+	languageDropdown = setupDropdown(document.querySelector('.dropdown.language'), (value) => send({ language: value }));
+
 	const s = await window.maegamiSettings.get();
 	renderState(s);
 	wireEvents();
 
 	// サイドバー末尾の版数表示を本体から取り寄せて埋める。
 	const version = await window.maegamiSettings.getVersion();
-	document.getElementById('app-version').textContent = 'バージョン ' + version;
+	document.getElementById('app-version').textContent = t('settings.version', { version });
 
 	// トレイなど外部からの変更にも追従させる。
 	window.maegamiSettings.onChange((updated) => renderState(updated));

@@ -22,7 +22,7 @@ const layersRoot = document.getElementById('layers');
 const message = document.getElementById('message');
 
 // 画面に浮かぶ案内へ冠するアプリ名。デスクトップ上では他のウィンドウと見分けがつかないため、どの案内も発信元が分かるようにこの名前を付ける。
-const APP_LABEL = '前紙';
+const APP_LABEL = window.maegamiI18n.t('app.name');
 
 // 全体設定 (不透明度・くり抜き・一時停止)。不透明度はウィンドウ側で掛かるため、描画側ではくり抜きと一時停止の判断に使う。
 let global = null;
@@ -30,14 +30,56 @@ let global = null;
 // 各レイヤーの再生エンジン。配列の順序がそのまま重ね順 (奥行き) になり、添字が大きいほど手前に描く。
 const engines = [];
 
-// カーソル追従のくり抜きが現在開いているか。画面外から戻ってきた瞬間に穴を遠くから滑らせないため、開閉の状態を覚えておく。
-let cursorOpen = false;
+// カーソル追従のくり抜きの設定。穴・軌跡を Paint Worklet が描き、これらの値が毎フレームの描画に使われる。
+let maskEnabled = false;
+let trailEnabled = false;
+
+// くり抜きの穴の半径。edge は縁のぼかしが戻りきる外側の半径、hole は完全に開く内側の半径で、両者の差がぼかしの幅になる。
+let maskEdge = 160;
+let maskHole = 90;
+
+// 軌跡の粒が消えるまでの寿命 (ミリ秒)。粒はのぞき穴と同じ大きさ・形で彫るため、太さは穴の半径 (maskHole / maskEdge) をそのまま使う。
+let trailLifeMs = 3000;
+
+// カーソルの目標位置 (受信した生の値) と、毎フレームそこへ滑らかに寄せる現在位置。画面内にいるかどうかも持つ。
+let cursorTarget = null;
+let cursorSmooth = null;
+let cursorInside = false;
+
+// 軌跡の粒。寿命 life は撒いた直後の 1 から 0 (消滅) へ毎フレーム減る。粒ごとに独立した寿命を持つので、古い場所から先にまだらにほどけていく。
+let trailParticles = [];
+
+// 軌跡の粒を最後に撒いた位置。ここから現在位置までを線分で補間して一定間隔で粒を足し、素早く動かしても軌跡が途切れないようにする。
+let lastSpawn = null;
+
+// マスク描画ループの requestAnimationFrame の識別子と、前フレームの時刻。動くものが無くなれば止め、カーソル移動や設定変更で起こす。
+let maskRafId = null;
+let maskLastTime = 0;
 
 // メインプロセスから届く最新のカーソル位置 (ステージ座標)。ランダム配置のとき出現位置をカーソルからやんわり遠ざけるために使う。画面外にいる間や未受信の間は null。
 let lastCursor = null;
 
+// 軌跡の粒を撒く間隔を、穴の芯 (満幅) の半径に対する割合で決める。狭いほど密に並んで滑らかになるが粒が増える。縁ぼかしではなく芯を基準にすることで、芯と芯が重なって線が均一に削れ、数珠つなぎのムラを防ぐ。
+const TRAIL_SPACING_FRACTION = 0.35;
+
+// 軌跡の粒の総数の上限。撒きっぱなしの暴走を防ぐ安全弁で、超えたら古いものから捨てる。
+const TRAIL_MAX = 5000;
+
+// 軌跡が満寿命のまま完全な穴で居座る寿命の割合。これを過ぎてからゆっくり薄れ始める。なぞった直後はくっきり開き、しばらく見えてから消えていく。
+const TRAIL_HOLD_FRACTION = 0.5;
+
+// カーソル追従の滑らかさの時定数 (ミリ秒)。小さいほど即座に追い、大きいほど遅れて滑らかに追う。粗い取得間隔でも穴がカクつかないようにする。
+const CURSOR_SMOOTH_TAU = 60;
+
 // ランダム配置でカーソルを避ける余裕 (px)。出現する画像の矩形がこの距離より内側にカーソルが入るほど候補を減点する。これより離れていれば減点はなく、配置のランダム性をそのまま保つ。
 const CURSOR_AVOID_MARGIN = 140;
+
+// ランダム配置のゆっくり移動の距離を、漂う軸方向の表示サイズに対する割合で決める。絵の大小に比例した控えめな移動になる。フェードに重ねて速く進む区間と、表示中にごくゆっくり進む区間で割合を分け、緩急を付ける。
+const DRIFT_FAST_FRACTION = 0.06;
+const DRIFT_SLOW_FRACTION = 0.04;
+
+// フェード区間の速い側の端の速さ。滞留中の一定速度を1とした正規化の傾きで、出だし(フェードイン)・締め(フェードアウト)をこの倍率まで持ち上げる。
+const DRIFT_FAST_SLOPE = 2.2;
 
 
 
@@ -432,6 +474,84 @@ function applyLayout(engine, el)
 
 
 
+// ランダム配置の漂い設定から、移動の軸と各区間の到達位置を組み立てる。漂わない設定やランダム配置以外、表示サイズが取れない場合は null を返す。到達位置は始点 (決まった配置位置 = 0) から選んだ向きへ進み続ける一本道で、afterIn → afterHold → afterOut の順に正方向へ増える。フェードが無い設定では速い区間を省き、holdOnly までのゆっくりした移動だけにする。
+function makeDriftPlan(engine, el)
+{
+	const config = engine.config;
+
+	if (!config || config.displayMode !== 'random')
+	{
+		return null;
+	}
+
+	const direction = config.driftDirection;
+
+	if (direction !== 'down' && direction !== 'right')
+	{
+		return null;
+	}
+
+	const axis = (direction === 'right') ? 'x' : 'y';
+	const dim = (axis === 'x') ? parseFloat(el.style.width) : parseFloat(el.style.height);
+
+	if (!isFinite(dim) || dim <= 0)
+	{
+		return null;
+	}
+
+	const fast = dim * DRIFT_FAST_FRACTION;
+	const slow = dim * DRIFT_SLOW_FRACTION;
+
+	return {
+		axis,
+		afterIn: fast,
+		afterHold: fast + slow,
+		afterOut: fast + slow + fast,
+		holdOnly: slow
+	};
+}
+
+
+
+
+// 漂いの1区間を当てる。軸方向の移動量を、与えた所要時間と加減速で目標値へ向かわせる。軸ごとのカスタムプロパティを書き換え、CSS 側のトランジションで補間させる。
+function driftTo(el, axis, value, durationMs, easing)
+{
+	el.style.setProperty('--drift-dur', durationMs + 'ms');
+	el.style.setProperty('--drift-ease', easing);
+	el.style.setProperty(axis === 'x' ? '--drift-x' : '--drift-y', value + 'px');
+}
+
+
+
+
+// フェード区間の加減速カーブを cubic-bezier で組む。滞留 (一定速度) と接する側の端の速度を低速にぴたりと合わせ、反対側を DRIFT_FAST_SLOPE まで速くする。これで区間の境目で速度が途切れず、引っかかりなく滑らかにつながる。joinSlope は低速の速度を区間平均速度で正規化した傾きで、decel=true はフェードイン (速い→低速)、false はフェードアウト (低速→速い)。制御点の x は 1/3・2/3 に固定し、cubic-bezier の両端の傾きは始点で y1/x1、終点で (1-y2)/(1-x2) になる性質を使う。
+function driftEase(joinSlope, decel)
+{
+	const fast = DRIFT_FAST_SLOPE;
+
+	// 下限は0より僅かに上に留め、終端で速度がゼロまで落ちて引っかかるのを防ぐ。
+	const join = Math.max(joinSlope, 0.04);
+
+	// 低速側の傾きが大きい (フェードが長く滞留が短いなど) と、固定した制御点では cubic-bezier の進度が非単調になり一瞬逆走する。境目の傾きが緩急の差を生まないこの領域では、進度が必ず単調な一定速度の linear にする。閾値 3 - fast は y2 >= y1 を保てる境目。
+	if (join >= 3 - fast)
+	{
+		return 'linear';
+	}
+
+	if (decel)
+	{
+		// 速い→低速。始点の傾きを速く、終点の傾きを join に合わせる。
+		return 'cubic-bezier(0.333, ' + (fast / 3).toFixed(4) + ', 0.667, ' + (1 - join / 3).toFixed(4) + ')';
+	}
+
+	// 低速→速い。始点の傾きを join に合わせ、終点の傾きを速くする。
+	return 'cubic-bezier(0.333, ' + (join / 3).toFixed(4) + ', 0.667, ' + (1 - fast / 3).toFixed(4) + ')';
+}
+
+
+
+
 // このレイヤーのメディアを1枚表示し、フェードイン → 滞留 → フェードアウト → 次へ、を繰り返す。プレイリストが空のレイヤーは何も描かずに止まる。
 function showNext(engine)
 {
@@ -481,16 +601,62 @@ function showNext(engine)
 			el.play().catch(() => {});
 		}
 
-		// 追加直後に可視クラスを付けてフェードインさせる。
+		// 大きさが確定してから漂いの計画を組む。漂わない設定なら null になり、以後の移動処理は素通りする。
+		const drift = makeDriftPlan(engine, el);
+
+		// 動画の総尺 (秒) をミリ秒に直す。途切れない実数が取れた場合のみ採用する。
+		const videoMs = (item.type === 'video' && isFinite(el.duration)) ? el.duration * 1000 : 0;
+
+		// 表示間隔より長い動画は、一度の再生が終わるまで切り替えずに待つ設定かを先に判断する。漂いの滞留区間の所要時間を、実際に表示し続ける長さへ合わせるため。
+		const playFull = (config.videoPlayFull && videoMs > hold && !el.error);
+		const effectiveHold = playFull ? videoMs : hold;
+
+		// フェード区間と滞留区間の境目で速度をそろえるための加減速カーブ。低速の速度 (移動量 ÷ 滞留時間) を、フェード区間の平均速度 (移動量 ÷ フェード時間) で正規化した傾きが境目の合わせ先になる。移動量の割合 (fast/slow) と時間 (fade/effectiveHold) だけで決まり、表示サイズには依らない。
+		const joinSlope = (fade > 0) ? (DRIFT_SLOW_FRACTION * fade) / (DRIFT_FAST_FRACTION * effectiveHold) : 0;
+		const driftEaseIn = driftEase(joinSlope, true);
+		const driftEaseOut = driftEase(joinSlope, false);
+
+		// 追加直後に可視クラスを付けてフェードインさせる。同時に、漂いの最初の区間も始める。
 		requestAnimationFrame(() =>
 		{
-			requestAnimationFrame(() => el.classList.add('visible'));
+			requestAnimationFrame(() =>
+			{
+				el.classList.add('visible');
+
+				if (drift)
+				{
+					if (fade > 0)
+					{
+						// フェードイン中はスッと進み、続いて滞留中はごくゆっくり進む。フェードの間は絵の輪郭が薄く、速い動きが目立たない。終端の速度を滞留中の低速にそろえたカーブで締め、境目で引っかからずに低速へつなぐ。
+						driftTo(el, drift.axis, drift.afterIn, fade, driftEaseIn);
+
+						later(engine, () =>
+						{
+							if (el === engine.currentElement)
+							{
+								driftTo(el, drift.axis, drift.afterHold, effectiveHold, 'linear');
+							}
+						}, fade);
+					}
+					else
+					{
+						// フェードが無い設定では速い区間を設けず、滞留中のごくゆっくりした移動だけにする。くっきり見えている絵が急に動き出す違和感を避ける。
+						driftTo(el, drift.axis, drift.holdOnly, effectiveHold, 'linear');
+					}
+				}
+			});
 		});
 
 		// フェードアウトを始め、その完了 + 間隔の後に次のメディアへ進む。
 		const startFadeOut = () =>
 		{
 			el.classList.remove('visible');
+
+			if (drift && fade > 0)
+			{
+				// フェードアウト中もスッと進んで去る。始端の速度を直前の低速にそろえたカーブで、境目で引っかからずに速さを上げ、薄れていく間に短く移動する。
+				driftTo(el, drift.axis, drift.afterOut, fade, driftEaseOut);
+			}
 
 			later(engine, () =>
 			{
@@ -499,11 +665,8 @@ function showNext(engine)
 			}, fade + gap);
 		};
 
-		// 動画の総尺 (秒) をミリ秒に直す。途切れない実数が取れた場合のみ採用する。
-		const videoMs = (item.type === 'video' && isFinite(el.duration)) ? el.duration * 1000 : 0;
-
 		// 表示間隔より長い動画は、一度の再生が終わるまで切り替えずに待つ設定。表示間隔のほうが長い場合は通常の滞留時間で切り替える。
-		if (config.videoPlayFull && videoMs > hold && !el.error)
+		if (playFull)
 		{
 			// ループを切って一度きりの再生にし、終端でフェードアウトへ移る。再生失敗時に止まらないよう error でも進める。
 			el.loop = false;
@@ -644,7 +807,7 @@ function applyState(state)
 {
 	global = state.global;
 
-	applyCursorMask(global.cursorMask);
+	applyCursorMask(global);
 	reconcileEngineCount(state.layers.length);
 
 	if (global.paused)
@@ -660,7 +823,7 @@ function applyState(state)
 	if (!anyFolder)
 	{
 		engines.forEach(stopEngine);
-		showMessage('フォルダ未選択 — 設定の各レイヤーで画像・動画フォルダを選んでください');
+		showMessage(window.maegamiI18n.t('overlay.noFolder'));
 		return;
 	}
 
@@ -669,7 +832,7 @@ function applyState(state)
 	if (!anyMedia)
 	{
 		engines.forEach(stopEngine);
-		showMessage('表示できる画像・動画が見つかりませんでした');
+		showMessage(window.maegamiI18n.t('overlay.noMedia'));
 		return;
 	}
 
@@ -689,7 +852,7 @@ function applyDisplaySettings(state)
 {
 	global = state.global;
 
-	applyCursorMask(global.cursorMask);
+	applyCursorMask(global);
 	reconcileEngineCount(state.layers.length);
 
 	state.layers.forEach((layer, i) =>
@@ -704,58 +867,251 @@ function applyDisplaySettings(state)
 
 
 
-// カーソル追従のくり抜きの入切と半径を反映する。切られている場合は穴も閉じておく。
-function applyCursorMask(enabled)
+// カーソル追従のくり抜きの設定を反映する。穴の大きさ・軌跡の入切や寸法・寿命を全体設定から取り、切られている場合は描画ループを止めて穴も閉じる。
+function applyCursorMask(g)
 {
-	stage.classList.toggle('masking', !!enabled);
+	maskEnabled = !!(g && g.cursorMask);
+	trailEnabled = maskEnabled && !!(g && g.cursorTrail);
 
-	// 設定の半径を縁の半径とし、穴の半径は承認済みの見た目 (90 / 160) と同じ比率で決める。これでぼかしの幅が大きさに応じて保たれる。開いたままスライダーで動かせば、--hole / --edge のトランジションで滑らかに大きさが変わる。
-	const edge = (global && global.maskRadius) ? global.maskRadius : 160;
-	const hole = Math.round(edge * 0.5625);
-	stage.style.setProperty('--edge-open', edge + 'px');
-	stage.style.setProperty('--hole-open', hole + 'px');
+	// 設定の半径を縁の半径とし、穴の半径は承認済みの見た目 (90 / 160) と同じ比率で決める。これでぼかしの幅が大きさに応じて保たれる。
+	maskEdge = (g && g.maskRadius) ? g.maskRadius : 160;
+	maskHole = Math.round(maskEdge * 0.5625);
+	trailLifeMs = (g && g.trailDuration) ? g.trailDuration : 3000;
 
-	if (!enabled)
+	stage.classList.toggle('masking', maskEnabled);
+
+	if (!maskEnabled)
 	{
-		stage.classList.remove('cursor-open');
-		cursorOpen = false;
+		// くり抜きを切ったら追従も軌跡も捨て、ループを止めてマスクを空 (穴なし) にする。
+		cursorTarget = null;
+		cursorSmooth = null;
+		cursorInside = false;
+		trailParticles = [];
+		lastSpawn = null;
+		stopMaskLoop();
+		pushMaskData();
+		return;
 	}
+
+	if (!trailEnabled)
+	{
+		// 軌跡を切ったら残っている粒を消し、撒き始点も忘れる。
+		trailParticles = [];
+		lastSpawn = null;
+	}
+
+	// 半径などの設定変更を即座に映すため、止まっていれば一度描き直す。
+	requestMaskTick();
 }
 
 
 
 
-// メインプロセスから届くカーソル位置でマスクの穴を動かす。画面内にいる間だけ穴を開け、画面外から入ってきた瞬間はトランジションを切って位置を合わせる。
+// メインプロセスから届くカーソル位置を、マスクの穴の目標位置として受け取る。画面外から入ってきた瞬間は滑らせず即座に合わせ、軌跡の撒き始点もそこへ置き直して画面外をまたいだ補間で軌跡が走るのを防ぐ。
 function moveCursorMask(pos)
 {
-	if (!stage.classList.contains('masking'))
+	if (!maskEnabled)
 	{
 		return;
 	}
 
-	const lit = !!pos.inside;
+	const inside = !!pos.inside;
 
-	if (lit && !cursorOpen)
+	if (inside)
 	{
-		// 画面外から入ってきた瞬間は穴を遠くから滑らせず、その場へ即座に合わせてから開く。
-		stage.classList.add('cursor-snap');
-		stage.style.setProperty('--mx', pos.x + 'px');
-		stage.style.setProperty('--my', pos.y + 'px');
-		void stage.offsetWidth;
-		stage.classList.remove('cursor-snap');
-	}
-	else if (lit)
-	{
-		stage.style.setProperty('--mx', pos.x + 'px');
-		stage.style.setProperty('--my', pos.y + 'px');
+		cursorTarget = { x: pos.x, y: pos.y };
+
+		if (!cursorInside)
+		{
+			cursorSmooth = { x: pos.x, y: pos.y };
+			lastSpawn = null;
+		}
 	}
 
-	cursorOpen = lit;
-	stage.classList.toggle('cursor-open', lit);
+	cursorInside = inside;
+	requestMaskTick();
 }
 
 
 
+
+// マスク描画ループを起こす。止まっているときだけ次フレームを予約する。
+function requestMaskTick()
+{
+	if (maskRafId === null && maskEnabled)
+	{
+		maskLastTime = 0;
+		maskRafId = requestAnimationFrame(maskFrame);
+	}
+}
+
+
+
+
+function stopMaskLoop()
+{
+	if (maskRafId !== null)
+	{
+		cancelAnimationFrame(maskRafId);
+		maskRafId = null;
+	}
+}
+
+
+
+
+// マスク描画の1フレーム。カーソルを目標へ滑らかに寄せ、軌跡を撒き、粒の寿命を減らし、結果をワークレットへ渡す。動くものが残っていれば次フレームを続け、穴が寄り切って粒も無くなれば止める。
+function maskFrame(now)
+{
+	maskRafId = null;
+
+	// 起き直した直後は前フレーム時刻が無いので一般的な1フレームぶんを仮に使う。長い中断後に粒が一気に飛ばないよう上限も設ける。
+	const dt = (maskLastTime > 0) ? Math.min(now - maskLastTime, 100) : 16;
+	maskLastTime = now;
+
+	if (cursorInside && cursorTarget)
+	{
+		if (!cursorSmooth)
+		{
+			cursorSmooth = { x: cursorTarget.x, y: cursorTarget.y };
+		}
+		else
+		{
+			const k = 1 - Math.exp(-dt / CURSOR_SMOOTH_TAU);
+			cursorSmooth.x += (cursorTarget.x - cursorSmooth.x) * k;
+			cursorSmooth.y += (cursorTarget.y - cursorSmooth.y) * k;
+		}
+
+		if (trailEnabled)
+		{
+			spawnTrail(cursorSmooth);
+		}
+	}
+
+	if (trailParticles.length > 0)
+	{
+		const decay = dt / trailLifeMs;
+
+		for (const p of trailParticles)
+		{
+			p.life -= decay;
+		}
+
+		trailParticles = trailParticles.filter((p) => p.life > 0);
+	}
+
+	pushMaskData();
+
+	// カーソルが目標へ寄り切っておらず動いているか、まだ生きた粒があれば続ける。穴が静止し粒も無ければ止め、CPU を遊ばせない。次のカーソル移動や設定変更で起き直す。
+	const easing = cursorInside && cursorSmooth && cursorTarget &&
+		(Math.abs(cursorTarget.x - cursorSmooth.x) > 0.5 || Math.abs(cursorTarget.y - cursorSmooth.y) > 0.5);
+
+	if (easing || trailParticles.length > 0)
+	{
+		maskRafId = requestAnimationFrame(maskFrame);
+	}
+}
+
+
+
+
+// カーソルの現在位置までの線分上へ、一定間隔で軌跡の粒を撒く。前回の撒き位置から間隔ぶん進むごとに粒を足し、素早く動かしても点線にならないようにする。
+function spawnTrail(pos)
+{
+	if (!lastSpawn)
+	{
+		lastSpawn = { x: pos.x, y: pos.y };
+		addParticle(pos.x, pos.y);
+		return;
+	}
+
+	const spacing = Math.max(maskHole * TRAIL_SPACING_FRACTION, 1);
+	const dx = pos.x - lastSpawn.x;
+	const dy = pos.y - lastSpawn.y;
+	const dist = Math.hypot(dx, dy);
+
+	if (dist < spacing)
+	{
+		return;
+	}
+
+	const ux = dx / dist;
+	const uy = dy / dist;
+	const steps = Math.floor(dist / spacing);
+
+	for (let i = 1; i <= steps; i++)
+	{
+		addParticle(lastSpawn.x + ux * spacing * i, lastSpawn.y + uy * spacing * i);
+	}
+
+	lastSpawn = { x: lastSpawn.x + ux * spacing * steps, y: lastSpawn.y + uy * spacing * steps };
+}
+
+
+
+
+function addParticle(x, y)
+{
+	trailParticles.push({ x, y, life: 1 });
+
+	if (trailParticles.length > TRAIL_MAX)
+	{
+		trailParticles.shift();
+	}
+}
+
+
+
+
+// 現在の穴と全ての粒を、ワークレットが読むブラシの並びへ書き出す。カーソルの穴は内側 (hole) まで満幅・縁 (edge) まで弱める形で強さ1、軌跡の粒は中心から半径ぶんを寿命に応じた強さで彫る。1ブラシは5項をカンマで繋ぎ、ブラシ同士は空白で区切る。カスタムプロパティの値はトップレベルのセミコロンを含められないため区切りに空白を使う。並べる相手が無ければ穴なし (0) を置き、空文字でカスタムプロパティ自体が消えてワークレットが前の絵のまま固まるのを防ぐ。
+function pushMaskData()
+{
+	const recs = [];
+
+	if (cursorInside && cursorSmooth)
+	{
+		recs.push(cursorSmooth.x.toFixed(1) + ',' + cursorSmooth.y.toFixed(1) + ',' + maskHole + ',' + maskEdge + ',1');
+	}
+
+	for (const p of trailParticles)
+	{
+		// 満寿命のうちは強さ1で完全な穴に保ち、HOLD を割ってからゆっくり弱める。粒はのぞき穴と同じ内 (hole)・外 (edge) のプロファイルで彫り、なぞった跡がそのまま残るようにする。
+		const strength = Math.min(p.life / TRAIL_HOLD_FRACTION, 1);
+		recs.push(p.x.toFixed(1) + ',' + p.y.toFixed(1) + ',' + maskHole + ',' + maskEdge + ',' + strength.toFixed(3));
+	}
+
+	stage.style.setProperty('--mask-data', recs.length > 0 ? recs.join(' ') : '0');
+}
+
+
+
+
+// くり抜きマスクを描く Paint Worklet を登録する。読み込みは非同期だが、登録前に paint(maskPainter) を参照しても描画が出ないだけで実害はなく、完了後のフレームから穴が描かれ始める。
+if (window.CSS && CSS.paintWorklet)
+{
+	CSS.paintWorklet.addModule('mask-painter.js').catch((err) => console.error('マスク用 Paint Worklet の読み込みに失敗しました:', err));
+}
+
+// トレイの「次へ」を受け、再生中の各レイヤーを次のメディアへ即座に送る。滞留の途中でも現在の表示を畳んで次の一枚へ進む。
+function advanceAll()
+{
+	engines.forEach((engine) =>
+	{
+		if (engine.running)
+		{
+			engine.index++;
+			showNext(engine);
+		}
+	});
+}
+
+
+
+
+// 文書の言語を現在の表示言語へ合わせ、状態が届く前の初期案内を出しておく。フォルダが選ばれていれば最初の状態受信で消える。
+document.documentElement.lang = window.maegamiI18n.locale;
+document.title = window.maegamiI18n.t('app.name');
+showMessage(window.maegamiI18n.t('overlay.initial'));
 
 window.maegami.onState((state) =>
 {
@@ -772,6 +1128,11 @@ window.maegami.onCursor((pos) =>
 	// 画面内にいる間だけ覚える。画面外へ出たら回避の必要が無いので忘れる。
 	lastCursor = pos.inside ? { x: pos.x, y: pos.y } : null;
 	moveCursorMask(pos);
+});
+
+window.maegami.onAdvance(() =>
+{
+	advanceAll();
 });
 
 window.maegami.requestState();

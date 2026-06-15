@@ -32,11 +32,9 @@ html, body {
 	cursor: default;
 }
 
-/* カーソル追従のくり抜き用。マスクの中心 (--mx, --my) と、穴の半径 (--hole)・縁が戻りきる半径 (--edge) を補間できるよう @property で型を宣言する。型を宣言しないとカスタムプロパティは文字列扱いになり、transition で滑らかに追従できない。 */
-@property --mx { syntax: '<length>'; inherits: false; initial-value: -9999px; }
-@property --my { syntax: '<length>'; inherits: false; initial-value: -9999px; }
-@property --hole { syntax: '<length>'; inherits: false; initial-value: 0px; }
-@property --edge { syntax: '<length>'; inherits: false; initial-value: 0px; }
+/* ランダム配置のゆっくり移動。配置位置からの translate 量を軸ごとに持ち、描画側が区間ごとに目標値・所要時間 (--drift-dur)・加減速 (--drift-ease) を書き換える。@property で長さ型として宣言し、値の変化をトランジションで滑らかに補間させる。型を宣言しないと文字列扱いになり補間できない。 */
+@property --drift-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --drift-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
 
 #stage {
 	position: relative;
@@ -45,22 +43,11 @@ html, body {
 	background: transparent;
 }
 
-/* カーソル周辺のくり抜き。カーソル位置を中心に、穴 (透明) → 縁のぼかし → 不透明、の放射状グラデーションをマスクにする。透明な部分はその場所の画像が消え、下のデスクトップが覗ける。中心はトランジションで遅れて追わせ、粗い取得間隔でも滑らかに見せる。マスクはアルファで効くため、不透明な #000 の部分が画像の見える領域になる。 */
+/* カーソル追従のくり抜き。カーソルの穴と、なぞった軌跡の粒を Paint Worklet が一枚のアルファマスクとして描く。描画側が毎フレーム --mask-data へブラシ (穴・粒の位置と大きさと強さ) を書き込み、ワークレットが不透明な黒の面から穴を彫る。黒く残った部分が画像の見える領域、彫った部分は透けて下のデスクトップが覗ける。穴の追従・軌跡の減衰はすべて描画側の毎フレーム更新で動かすため、ここにトランジションは置かない。 */
 #stage.masking {
-	mask-image: radial-gradient(circle at var(--mx) var(--my), transparent 0, transparent var(--hole), #000 var(--edge));
+	mask-image: paint(maskPainter);
 	mask-repeat: no-repeat;
-	transition: --mx 140ms ease-out, --my 140ms ease-out, --hole 220ms ease-out, --edge 220ms ease-out;
-}
-
-/* カーソルが画面内にある間だけ穴を開く。離れれば半径が 0 に戻って穴が閉じる。穴 (--hole) と縁 (--edge) の半径は、設定の半径から描画側が与える --hole-open / --edge-open を受け取る。両者の差がぼかしの幅になる。設定が無い場合の既定値をフォールバックに置く。 */
-#stage.masking.cursor-open {
-	--hole: var(--hole-open, 90px);
-	--edge: var(--edge-open, 160px);
-}
-
-/* 画面外から入ってきた瞬間だけトランジションを止め、位置を即座に合わせる。穴が画面の隅から滑り込むのを防ぐためで、#stage.masking より後に置いて transition を上書きする。 */
-#stage.cursor-snap {
-	transition: none;
+	mask-size: 100% 100%;
 }
 
 /* レイヤーの入れ物。各レイヤーは自分のコンテナへメディアを入れ、コンテナの DOM 上の並び順がそのまま重ね順 (奥行き) になる。個々のメディアが入れ替わっても、コンテナ単位で前後関係が保たれる。 */
@@ -84,8 +71,13 @@ html, body {
 	object-fit: contain;
 	object-position: center center;
 	opacity: 0;
-	transition: opacity var(--fade, 1500ms) ease-in-out;
-	will-change: opacity;
+	/* ランダム配置のゆっくり移動を配置位置へ重ねる。配置は left/top で決まり、移動はそこからの translate として独立に効かせる。漂わない設定では --drift-x/y は 0 のままで動かない。 */
+	transform: translate(var(--drift-x, 0px), var(--drift-y, 0px));
+	transition:
+		opacity var(--fade, 1500ms) ease-in-out,
+		--drift-x var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--drift-y var(--drift-dur, 0ms) var(--drift-ease, linear);
+	will-change: opacity, transform;
 }
 
 #stage .media.cover {
