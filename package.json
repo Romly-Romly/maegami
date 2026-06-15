@@ -1,0 +1,50 @@
+{
+	"name": "maegami",
+	"version": "1.0.0",
+	"description": "デスクトップ最前面に常駐し、画像／動画スライドショーを楽しめる半透明の壁紙チェンジャー風オーバーレイ。",
+	"main": "main.js",
+	"author": "Romly",
+	"license": "GPL-3.0-only",
+	"scripts": {
+		"start": "electron .",
+		"pack": "electron-builder --dir",
+		"dist": "electron-builder"
+	},
+	"build": {
+		"appId": "com.romly.maegami",
+		"productName": "Maegami",
+		"directories": {
+			"output": "dist"
+		},
+		"files": [
+			"main.js",
+			"preload.js",
+			"renderer/**/*",
+			"assets/**/*"
+		],
+		"extraFiles": ["LICENSE", "README.md", "docs/screenshot.webp"],
+		"electronLanguages": ["ja", "en-US"],
+		"win": {
+			"target": ["nsis", "zip"],
+			"icon": "build/icon.png"
+		},
+		"nsis": {
+			"oneClick": false,
+			"allowToChangeInstallationDirectory": true,
+			"deleteAppDataOnUninstall": true,
+			"license": "LICENSE"
+		},
+		"mac": {
+			"target": "dmg",
+			"category": "public.app-category.utilities",
+			"icon": "build/icon.png",
+			"extendInfo": {
+				"LSUIElement": true
+			}
+		}
+	},
+	"devDependencies": {
+		"electron": "^42.0.0",
+		"electron-builder": "^26.15.3"
+	}
+}

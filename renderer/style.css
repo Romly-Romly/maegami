@@ -1,0 +1,124 @@
+/*
+ * 前紙 (Maegami)
+ * Copyright (C) 2026 Romly
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+html, body {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: transparent;
+	/* ウィンドウ自体がクリックを素通りさせるが、念のため描画側でも無効化しておく。 */
+	pointer-events: none;
+	user-select: none;
+	cursor: default;
+}
+
+/* カーソル追従のくり抜き用。マスクの中心 (--mx, --my) と、穴の半径 (--hole)・縁が戻りきる半径 (--edge) を補間できるよう @property で型を宣言する。型を宣言しないとカスタムプロパティは文字列扱いになり、transition で滑らかに追従できない。 */
+@property --mx { syntax: '<length>'; inherits: false; initial-value: -9999px; }
+@property --my { syntax: '<length>'; inherits: false; initial-value: -9999px; }
+@property --hole { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --edge { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+#stage {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	background: transparent;
+}
+
+/* カーソル周辺のくり抜き。カーソル位置を中心に、穴 (透明) → 縁のぼかし → 不透明、の放射状グラデーションをマスクにする。透明な部分はその場所の画像が消え、下のデスクトップが覗ける。中心はトランジションで遅れて追わせ、粗い取得間隔でも滑らかに見せる。マスクはアルファで効くため、不透明な #000 の部分が画像の見える領域になる。 */
+#stage.masking {
+	mask-image: radial-gradient(circle at var(--mx) var(--my), transparent 0, transparent var(--hole), #000 var(--edge));
+	mask-repeat: no-repeat;
+	transition: --mx 140ms ease-out, --my 140ms ease-out, --hole 220ms ease-out, --edge 220ms ease-out;
+}
+
+/* カーソルが画面内にある間だけ穴を開く。離れれば半径が 0 に戻って穴が閉じる。穴 (--hole) と縁 (--edge) の半径は、設定の半径から描画側が与える --hole-open / --edge-open を受け取る。両者の差がぼかしの幅になる。設定が無い場合の既定値をフォールバックに置く。 */
+#stage.masking.cursor-open {
+	--hole: var(--hole-open, 90px);
+	--edge: var(--edge-open, 160px);
+}
+
+/* 画面外から入ってきた瞬間だけトランジションを止め、位置を即座に合わせる。穴が画面の隅から滑り込むのを防ぐためで、#stage.masking より後に置いて transition を上書きする。 */
+#stage.cursor-snap {
+	transition: none;
+}
+
+/* レイヤーの入れ物。各レイヤーは自分のコンテナへメディアを入れ、コンテナの DOM 上の並び順がそのまま重ね順 (奥行き) になる。個々のメディアが入れ替わっても、コンテナ単位で前後関係が保たれる。 */
+#layers {
+	position: absolute;
+	inset: 0;
+}
+
+.layer {
+	position: absolute;
+	inset: 0;
+}
+
+/* メディアは中央に配置し、フェード用に opacity をトランジションする。 */
+#stage .media {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	object-position: center center;
+	opacity: 0;
+	transition: opacity var(--fade, 1500ms) ease-in-out;
+	will-change: opacity;
+}
+
+#stage .media.cover {
+	object-fit: cover;
+}
+
+/* 縁ぼかし: 白い矩形を feGaussianBlur でぼかした SVG をアルファマスクに使う。ガウス減衰は傾きが連続なのでマッハバンドが出にくく、四隅も継ぎ目なく丸く溶ける。preserveAspectRatio='none' と mask-size で要素全体へ引き伸ばす。矩形の控え幅 (12) を stdDeviation (4) の約 3 倍以上に取り、ガウスの裾が要素の端へ届く前に 0 まで落ちきるようにする。控え幅が 3×stdDeviation を下回ると裾が端で断ち切られ、画像の縁がくっきり残る。 */
+#stage .media.feather {
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cfilter id='f' filterUnits='userSpaceOnUse' x='-50' y='-50' width='200' height='200'%3E%3CfeGaussianBlur stdDeviation='4'/%3E%3C/filter%3E%3Crect x='12' y='12' width='76' height='76' fill='%23fff' filter='url(%23f)'/%3E%3C/svg%3E");
+	mask-size: 100% 100%;
+	mask-repeat: no-repeat;
+}
+
+/* ドロップシャドウは画像のアルファ形状に沿って影を落とす。透過 PNG なら被写体の輪郭そのままに影が出る。ずらし量・ぼかし・濃さはレイヤーごとに異なるため、描画側が filter をインラインで当てる。 */
+
+#stage .media.visible {
+	opacity: 1;
+}
+
+#message {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	color: rgba(255, 255, 255, 0.85);
+	font-family: "Segoe UI", "Yu Gothic UI", sans-serif;
+	font-size: 18px;
+	text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+	padding: 16px 24px;
+	background: rgba(0, 0, 0, 0.35);
+	border-radius: 8px;
+}
+
+#message.hidden {
+	display: none;
+}

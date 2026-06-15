@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+*.log
+
+# Affinity がドキュメントを開いている間だけ生成するロックファイル
+*~lock~
