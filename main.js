@@ -28,6 +28,9 @@ const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.avif'];
 const videoExtensions = ['.mp4', '.webm', '.ogv', '.mov', '.m4v'];
 
+// メディア収集で潜るフォルダの深さの上限。指定フォルダ自身を1階層目として数え、親・子・孫の3階層まで走査する。巨大なフォルダ木を指定された場合の暴走を防ぐための上限でもある。
+const maxScanDepth = 3;
+
 // レイヤーは最大3枚まで増やせる。
 const maxLayers = 3;
 
@@ -279,8 +282,8 @@ function reloadWindows()
 
 
 
-// 指定ディレクトリ直下から、対応拡張子のメディアファイル一覧を収集する。
-function scanMedia(dir)
+// 指定ディレクトリとその子フォルダ (maxScanDepth 階層まで) から、対応拡張子のメディアファイル一覧を収集する。depth は現在の階層で、指定フォルダ自身を1として数える。
+function scanMedia(dir, depth = 1)
 {
 	if (!dir)
 	{
@@ -303,13 +306,25 @@ function scanMedia(dir)
 
 	for (const entry of entries)
 	{
+		const full = path.join(dir, entry.name);
+
+		if (entry.isDirectory())
+		{
+			// 上限階層に達していなければ子フォルダへ潜る。
+			if (depth < maxScanDepth)
+			{
+				result.push(...scanMedia(full, depth + 1));
+			}
+
+			continue;
+		}
+
 		if (!entry.isFile())
 		{
 			continue;
 		}
 
 		const ext = path.extname(entry.name).toLowerCase();
-		const full = path.join(dir, entry.name);
 
 		if (imageExtensions.includes(ext))
 		{
@@ -986,6 +1001,22 @@ function createTrayIcon()
 
 
 
+// トレイメニュー項目のアイコンを返す。ネイティブメニューは Web フォントを使えないため、romoji のグリフを焼いた PNG を読み込む。メニューの文字色に合わせ、テーマの明暗で描き分けた素材を出し分ける。@2x は createFromPath が同じフォルダから自動で取り込む。
+function menuIcon(name)
+{
+	const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+	return nativeImage.createFromPath(path.join(__dirname, 'assets', `menu-${name}-${theme}.png`));
+}
+
+
+
+
+
+
+
+
+
+
 function buildTray()
 {
 	if (!tray)
@@ -1015,8 +1046,8 @@ function buildTray()
 			{ label: t('tray.setAutoResume'), submenu: resumeSubmenu }
 		]
 		: [
-			{ label: t('tray.next'), click: advanceOverlay },
-			{ label: t('tray.pause'), click: () => setPaused(true, 0) },
+			{ label: t('tray.next'), icon: menuIcon('next'), click: advanceOverlay },
+			{ label: t('tray.pause'), icon: menuIcon('pause'), click: () => setPaused(true, 0) },
 			{ label: t('tray.pauseAutoResume'), submenu: resumeSubmenu }
 		];
 
@@ -1030,7 +1061,7 @@ function buildTray()
 		{ label: t('tray.header', { version: app.getVersion() }), enabled: false },
 		{ type: 'separator' },
 		{ label: t('tray.layers', { count: settings.layers.length }), enabled: false },
-		{ label: t('tray.settings'), click: openSettings },
+		{ label: t('tray.settings'), icon: menuIcon('settings'), click: openSettings },
 		{ type: 'separator' },
 		...playbackItems,
 		{ type: 'separator' },
@@ -1074,10 +1105,10 @@ function main()
 	// 設定の言語と OS ロケールから表示言語を決め、辞書を読み込む。app.getLocale はアプリの ready 後でないと正しい値を返さないため、ここで行う。
 	configureLocale();
 
-	// preload からの同期要求に応え、現在の言語と辞書を返す。描画プロセスはこれを使って起動直後から文言を翻訳する。
+	// preload からの同期要求に応え、現在の言語と辞書、対応するメディア拡張子の一覧を返す。描画プロセスはこれを使って起動直後から文言を翻訳し、設定画面のヒントに対応形式を並べる。
 	ipcMain.on('i18n:get', (event) =>
 	{
-		event.returnValue = { locale: currentLocale, dict: currentDict };
+		event.returnValue = { locale: currentLocale, dict: currentDict, extensions: imageExtensions.concat(videoExtensions) };
 	});
 
 	// 描画プロセスからの状態要求に応える。
@@ -1122,6 +1153,9 @@ function main()
 
 	createWindow();
 	buildTray();
+
+	// トレイメニューのアイコンはテーマの明暗で描き分けているため、システムのテーマ切替に合わせてトレイを作り直し、現在のテーマに合う素材へ差し替える。
+	nativeTheme.on('updated', () => buildTray());
 
 	screen.on('display-metrics-changed', fitToPrimaryDisplay);
 	screen.on('display-added', fitToPrimaryDisplay);

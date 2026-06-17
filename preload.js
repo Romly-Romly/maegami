@@ -39,10 +39,11 @@ function translate(key, vars)
 	return text;
 }
 
-// 描画プロセスへ、現在の言語と翻訳関数を公開する。
+// 描画プロセスへ、現在の言語と翻訳関数、対応するメディア拡張子の一覧を公開する。
 contextBridge.exposeInMainWorld('maegamiI18n', {
 	locale: i18nState ? i18nState.locale : 'ja',
-	t: translate
+	t: translate,
+	extensions: i18nState && i18nState.extensions ? i18nState.extensions : []
 });
 
 // 描画プロセスへは状態購読と再要求の口だけを公開する。

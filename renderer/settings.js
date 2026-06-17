@@ -41,6 +41,9 @@ const trailDurationValueEl = document.getElementById('trail-duration-value');
 // preload から渡された翻訳関数。キーを現在の言語の文言へ変換する。
 const t = window.maegamiI18n.t;
 
+// 対応するメディア拡張子を空白区切りで並べた文字列。メディアの種類のヒントに対応形式として差し込む。拡張子の定義はメインプロセスにあり、preload 経由で受け取って二重定義を避ける。
+const mediaFormats = (window.maegamiI18n.extensions || []).join(' ');
+
 // 全体セクションの言語選択ドロップダウン。init で組み立て、選択値の反映に使う。
 let languageDropdown = null;
 
@@ -201,6 +204,30 @@ function updateSizeRowsVisibility(root, mode)
 
 
 
+// 表示方法の説明文を、選んでいるモードごとの具体的な内容へ差し替える。
+function updateDisplayModeDesc(root, mode)
+{
+	const desc = root.querySelector('.display-mode-desc');
+	desc.textContent = t('layer.displayMode.desc.' + mode);
+}
+
+
+
+
+// 表示サイズの意味は、画像を収める設定では「画面に収めたときの大きさ」、ランダム配置では「デスクトップ面積に対する画像の面積の割合」と異なるため、ヒントもモードに合わせて差し替える。画面を覆う設定ではこの行は隠れるため触らない。
+function updateSizeDesc(root, mode)
+{
+	if (mode === 'cover')
+	{
+		return;
+	}
+
+	root.querySelector('.size-desc').textContent = t('layer.size.desc.' + mode);
+}
+
+
+
+
 // ゆっくり移動はランダム配置のときだけ効くため、それ以外の表示方法では隠す。
 function updateDriftRowVisibility(root, mode)
 {
@@ -291,6 +318,8 @@ function wireLayer(root, index)
 		{
 			updateSizeRowsVisibility(root, button.dataset.value);
 			updateDriftRowVisibility(root, button.dataset.value);
+			updateDisplayModeDesc(root, button.dataset.value);
+			updateSizeDesc(root, button.dataset.value);
 			sendLayer(index, { displayMode: button.dataset.value });
 		});
 	}
@@ -326,7 +355,15 @@ function buildLayers(count)
 		const navItem = document.createElement('button');
 		navItem.className = 'nav-item';
 		navItem.dataset.target = 'section-layer-' + i;
-		navItem.textContent = t('layer.navItem', { n: i + 1 });
+
+		// レイヤーのグリフを項目名の左へ添える。textContent では丸ごと置き換わるため、アイコンと文字を別々のノードで組む。
+		const navIcon = document.createElement('span');
+		navIcon.className = 'ico';
+		navIcon.setAttribute('aria-hidden', 'true');
+		navIcon.textContent = String.fromCharCode(0xE003);
+		navItem.appendChild(navIcon);
+		navItem.appendChild(document.createTextNode(t('layer.navItem', { n: i + 1 })));
+
 		layerNav.appendChild(navItem);
 
 		const fragment = layerTemplate.content.cloneNode(true);
@@ -336,6 +373,9 @@ function buildLayers(count)
 		// テンプレート内の静的な文言を現在の言語へ訳す。レイヤー番号を含む見出しはこの後に個別に入れる。
 		translateDom(section);
 		section.querySelector('.layer-title').textContent = t('layer.title', { n: i + 1 });
+
+		// メディアの種類のヒントは対応形式のプレースホルダを含むため、translateDom とは別に差し込む。
+		section.querySelector('.media-kind-desc').textContent = t('layer.mediaKind.desc', { formats: mediaFormats });
 
 		// 最後の1枚は削除させない。削除セクション (空の見出しと削除カード) を隠して最低1枚を保つ。
 		const hideRemove = count <= 1;
@@ -390,6 +430,8 @@ function refreshLayer(index, layer)
 	ui.driftDirectionDropdown.setValue(layer.driftDirection || 'none');
 	updateSizeRowsVisibility(root, layer.displayMode);
 	updateDriftRowVisibility(root, layer.displayMode);
+	updateDisplayModeDesc(root, layer.displayMode);
+	updateSizeDesc(root, layer.displayMode);
 
 	ui.displayEffectDropdown.setValue(layer.displayEffect || 'none');
 	setSlider(root, '.shadow-x', '.shadow-x-value', layer.shadowX, (v) => v + 'px');

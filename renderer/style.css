@@ -36,6 +36,22 @@ html, body {
 @property --drift-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --drift-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
 
+/* 奥行き方向のゆっくり移動。配置時の表示サイズ (1.0) を基準に拡大・縮小し、手前へ近づく/奥へ遠ざかる動きを表す。平行移動と同じく @property で数値型として宣言し、トランジションで補間させる。 */
+@property --drift-scale { syntax: '<number>'; inherits: false; initial-value: 1; }
+
+/* 切り離した影のぼかし半径。奥行きの移動と同じ時間軸で補間させ、手前へ近づくほど (拡大率が大きいほど) 強くぼかす。 */
+@property --shadow-blur { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+/* 切り離した影のずらし量。影自身は拡大せず、手前へ来るほどずらし方向へ滑らせて、拡大する画像の下から横へ滅り出させる。奥行きの移動と同じ時間軸で補間させる。 */
+@property --shadow-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --shadow-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
+/* 切り離した影の濃さ (不透明度)。手前へ来るほど薄れ、奥へ去るほど濃くなる。外側の要素で動かし、黒い面を描く内側の要素へ継承させて背景色の不透明度に使うため、inherits を true にする。 */
+@property --shadow-alpha { syntax: '<number>'; inherits: true; initial-value: 0; }
+
+/* 切り離した影の拡大率。中立の1を上限とし、画像が奥へ縮むときだけ画像に合わせて一緒に縮める。手前へ来るときは1のまま据え置く。 */
+@property --shadow-scale { syntax: '<number>'; inherits: false; initial-value: 1; }
+
 #stage {
 	position: relative;
 	width: 100%;
@@ -71,12 +87,13 @@ html, body {
 	object-fit: contain;
 	object-position: center center;
 	opacity: 0;
-	/* ランダム配置のゆっくり移動を配置位置へ重ねる。配置は left/top で決まり、移動はそこからの translate として独立に効かせる。漂わない設定では --drift-x/y は 0 のままで動かない。 */
-	transform: translate(var(--drift-x, 0px), var(--drift-y, 0px));
+	/* ランダム配置のゆっくり移動を配置位置へ重ねる。配置は left/top で決まり、移動はそこからの translate と中央基準の scale として独立に効かせる。平行移動の向きでは --drift-scale が 1、奥行きの向きでは --drift-x/y が 0 のままで、どちらか一方だけが動く。漂わない設定では双方が初期値のままで動かない。 */
+	transform: translate(var(--drift-x, 0px), var(--drift-y, 0px)) scale(var(--drift-scale, 1));
 	transition:
 		opacity var(--fade, 1500ms) ease-in-out,
 		--drift-x var(--drift-dur, 0ms) var(--drift-ease, linear),
-		--drift-y var(--drift-dur, 0ms) var(--drift-ease, linear);
+		--drift-y var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--drift-scale var(--drift-dur, 0ms) var(--drift-ease, linear);
 	will-change: opacity, transform;
 }
 
@@ -95,6 +112,35 @@ html, body {
 
 #stage .media.visible {
 	opacity: 1;
+}
+
+/* 切り離したドロップシャドウ。奥行きの向きでは画像が拡大縮小するため、影を画像と別の要素にして、画像の拡大に巻き込まれず独立に振る舞えるようにする。手前へ来るときは影は中立の大きさのまま、ずらし方向へ滑って拡大する画像の下から横へ滅り出る。奥へ去るときは画像に合わせて影も縮み、縮んだ画像より大きくならないようにする。同時に手前ほど薄れ、奥ほど濃くなる。外側の要素がぼかし (--shadow-blur)・ずらし量 (--shadow-x / --shadow-y)・濃さ (--shadow-alpha)・拡大率 (--shadow-scale)・フェード (opacity)・配置を持ち、内側の要素が画像のアルファ形状を黒一色のマスクとして写し取る。transform は描画側がインラインで当て、中心基準で拡大してからずらすよう translate() の後に scale() を並べる。濃さは --shadow-alpha を外側で動かして内側へ継承させ、内側の背景色の不透明度に使う。CSS はマスクより先にフィルターを適用するため、同じ要素で blur とマスクを兼ねると輪郭が固いまま切り抜かれてしまう。マスクを内側、ぼかしを外側に分け、マスクで切り抜いた影の輪郭そのものをぼかす。 */
+#stage .media-shadow {
+	position: absolute;
+	opacity: 0;
+	filter: blur(var(--shadow-blur, 0px));
+	transition:
+		opacity var(--fade, 1500ms) ease-in-out,
+		--shadow-blur var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--shadow-x var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--shadow-y var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--shadow-alpha var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--shadow-scale var(--drift-dur, 0ms) var(--drift-ease, linear);
+	will-change: opacity, filter, transform;
+}
+
+#stage .media-shadow.visible {
+	opacity: 1;
+}
+
+#stage .media-shadow-fill {
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, var(--shadow-alpha, 0));
+	mask-size: 100% 100%;
+	mask-repeat: no-repeat;
+	-webkit-mask-size: 100% 100%;
+	-webkit-mask-repeat: no-repeat;
 }
 
 #message {

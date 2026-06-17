@@ -81,6 +81,15 @@ const DRIFT_SLOW_FRACTION = 0.04;
 // フェード区間の速い側の端の速さ。滞留中の一定速度を1とした正規化の傾きで、出だし(フェードイン)・締め(フェードアウト)をこの倍率まで持ち上げる。
 const DRIFT_FAST_SLOPE = 2.2;
 
+// 切り離した影のぼかしを奥行きに連動させる強さ。中立 (拡大率1.0) のぼかしを基準に、拡大率が1から離れた分へこの倍率を掛けて増減させる。手前へ来る (拡大率が上がる) ほどぼかしが強まり、奥へ去る (拡大率が下がる) ほど0へ近づいてくっきりする。
+const SHADOW_BLUR_GAIN = 30;
+
+// 切り離した影のずらし量を奥行きに連動させる強さ。影自身は拡大せず登場時の大きさのまま、画像の拡大率が中立1から離れた分へ箱の対角長とこの係数を掛けた距離だけ、ずらし方向へ滑らせる。手前へ来る (拡大率が上がる) ほど影が拡大する画像の下から横へ滅り出し、奥へ去る (拡大率が下がる) ほど画像の真下へ寄る。遠い光源 (太陽) の下で物が近づくときの、影が視差で横へ伸びる見え方を狙う。
+const SHADOW_SLIDE_FRACTION = 1;
+
+// 切り離した影の濃さを奥行きに連動させる強さ。中立 (拡大率1.0) の濃さを基準に、画像の拡大率が1から離れた分へこの倍率を掛けて増減させる。手前へ来る (拡大率が上がる) ほど薄れ (光が回り込んで影が拡散する)、奥へ去る (拡大率が下がる) ほど濃くなる (地に密着して濃く落ちる)。不透明度として 0〜1 にクランプする。
+const SHADOW_FADE_GAIN = 5;
+
 
 
 
@@ -111,6 +120,7 @@ function makeEngine(container)
 		playlist: [],
 		index: 0,
 		currentElement: null,
+		shadowElement: null,
 		timers: [],
 		signature: null,
 		running: false
@@ -141,13 +151,19 @@ function later(engine, fn, ms)
 
 
 
-// 表示中の要素を破棄する。
+// 表示中の要素を破棄する。切り離した影の要素があればそれも併せて取り除く。
 function removeCurrent(engine)
 {
 	if (engine.currentElement)
 	{
 		engine.currentElement.remove();
 		engine.currentElement = null;
+	}
+
+	if (engine.shadowElement)
+	{
+		engine.shadowElement.remove();
+		engine.shadowElement = null;
 	}
 }
 
@@ -256,9 +272,118 @@ function applyEffect(engine, el)
 	}
 	else if (config.displayEffect === 'shadow')
 	{
+		// 奥行きの向きの画像では影を別要素へ切り離して描くため、画像自身には drop-shadow を当てない。既に切り離した影の要素がある場合 (再生中の設定変更で今の一枚へ当て直すとき) も、二重の影にならないよう画像へは当てない。切り離さない場合 (平行移動・静止や動画) は要素へ直接当てる。
+		if (isDecoupledShadow(config, el) || engine.shadowElement)
+		{
+			return;
+		}
+
 		const opacity = Math.min(Math.max(config.shadowOpacity, 0), 100) / 100;
 		el.style.filter = 'drop-shadow(' + config.shadowX + 'px ' + config.shadowY + 'px ' + config.shadowBlur + 'px rgba(0, 0, 0, ' + opacity + '))';
 	}
+}
+
+
+
+
+// 影を画像から切り離して別要素で描くかどうか。奥行きの向き (前後) のドロップシャドウ指定の画像のときだけ切り離す。画像が拡大しても影をその場に留めるためで、平行移動・静止や動画では画像自身へ drop-shadow を当てる描き方にする。
+function isDecoupledShadow(config, el)
+{
+	return !!config
+		&& config.displayEffect === 'shadow'
+		&& config.displayMode === 'random'
+		&& (config.driftDirection === 'forward' || config.driftDirection === 'backward')
+		&& el.tagName === 'IMG';
+}
+
+
+
+
+// 切り離した影の要素を作る。画像のアルファ形状を黒一色のマスクとして写し取り、blur でぼかして影にする。手前へ来るときは中立の大きさのまま、画像がずらし方向へ滑る影を追い越して下から滅り出させる。奥へ去るときは画像に合わせて影も縮め、縮んだ画像より大きくならないようにする。各区間のずらし量・ぼかし・濃さ・拡大率は、その区間の画像の拡大率に応じて決める。drift には拡大率を入れた scale の計画を渡す。
+function createShadowElement(engine, image, item, drift, startScale)
+{
+	const config = engine.config;
+
+	// 外側はぼかし・ずらし量・拡大率・フェード・配置を持つ。画像と同じ配置の箱に置く。ずらしは --shadow-x / --shadow-y、拡大率は --shadow-scale で動かす。transform は中心基準で拡大してからずらすよう scale() を後に並べる (ずらし量は画面上の px のまま効かせる)。
+	const el = document.createElement('div');
+	el.className = 'media-shadow';
+	el.style.left = image.style.left;
+	el.style.top = image.style.top;
+	el.style.width = image.style.width;
+	el.style.height = image.style.height;
+	el.style.transform = 'translate(var(--shadow-x, 0px), var(--shadow-y, 0px)) scale(var(--shadow-scale, 1))';
+	el.style.setProperty('--fade', config.fadeDuration + 'ms');
+
+	// 内側は画像のアルファ形状を黒で写す面。ランダム配置では箱が画像の縦横比そのものなので、引き伸ばし (100% 100%) で輪郭がそのまま重なる。影の濃さは背景色の不透明度 (--shadow-alpha) で持ち、フェードは外側の opacity に任せる。--shadow-alpha は外側で動かして内側へ継承させる。
+	const fill = document.createElement('div');
+	fill.className = 'media-shadow-fill';
+	fill.style.webkitMaskImage = 'url("' + item.url + '")';
+	fill.style.maskImage = 'url("' + item.url + '")';
+
+	el.appendChild(fill);
+
+	// ずらしは設定のずらし量 (shadowX / shadowY) の向きへ伸ばす。向きを単位ベクトルにし、その向きへの滑り距離だけを奥行きに連動させる。滑り距離は中立で設定のずらし量の長さ、そこから画像の拡大率の中立1からの差へ箱の対角長と係数を掛けた分を足す。画像の拡大に確実に追い越されて滅り出るよう、距離は箱の大きさに比例させる。奥の向きでは負になり得るが、0でクランプして反対側へ回り込まないようにし、画像の真下で止める。
+	const ox = config.shadowX;
+	const oy = config.shadowY;
+	const olen = Math.hypot(ox, oy);
+	const ux = (olen > 0) ? ox / olen : 0;
+	const uy = (olen > 0) ? oy / olen : 0;
+	const ref = Math.hypot(parseFloat(el.style.width), parseFloat(el.style.height));
+	const slideAt = (imageScale) => Math.max(0, olen + (imageScale - 1) * ref * SHADOW_SLIDE_FRACTION);
+	const offsetXAt = (imageScale) => ux * slideAt(imageScale);
+	const offsetYAt = (imageScale) => uy * slideAt(imageScale);
+
+	// 中立 (拡大率1.0) のぼかしを基準に、画像の拡大率が1から離れた分を強調する。0を下回らないようにクランプし、奥へ去りきった所でくっきりさせる。
+	const base = Math.max(config.shadowBlur, 0);
+	const blurAt = (imageScale) => Math.max(0, base * (1 + (imageScale - 1) * SHADOW_BLUR_GAIN));
+
+	// 影の濃さ (不透明度) は中立を設定値とし、手前へ来るほど薄れ・奥へ去るほど濃くなる。不透明度として0〜1にクランプする。
+	const darkness = Math.min(Math.max(config.shadowOpacity, 0), 100) / 100;
+	const alphaAt = (imageScale) => Math.min(1, Math.max(0, darkness * (1 - (imageScale - 1) * SHADOW_FADE_GAIN)));
+
+	// 影の拡大率は中立の1を上限とし、画像が縮む (奥へ去る) ときだけ画像に合わせて一緒に縮める。手前へ来るときは1のまま据え置き、固定サイズの影を画像が追い越して下から滅り出る。奥へ去るときは画像より大きくならないので、縮んだ画像が影の中に収まってしまうのを防ぐ。
+	const scaleAt = (imageScale) => Math.min(1, imageScale);
+
+	// 出現時 (画像の出現時の拡大率 startScale) のずらし量・ぼかし・濃さ・拡大率を初期値に置く。以後は区間ごとに画像の拡大率へ合わせて補間する。forward では startScale が中立1、backward では最大の拡大率になる。
+	el.style.setProperty('--shadow-x', offsetXAt(startScale) + 'px');
+	el.style.setProperty('--shadow-y', offsetYAt(startScale) + 'px');
+	el.style.setProperty('--shadow-blur', blurAt(startScale) + 'px');
+	el.style.setProperty('--shadow-alpha', alphaAt(startScale));
+	el.style.setProperty('--shadow-scale', scaleAt(startScale));
+
+	return {
+		el,
+		offsetX: {
+			afterIn: offsetXAt(drift.afterIn),
+			afterHold: offsetXAt(drift.afterHold),
+			afterOut: offsetXAt(drift.afterOut),
+			holdOnly: offsetXAt(drift.holdOnly)
+		},
+		offsetY: {
+			afterIn: offsetYAt(drift.afterIn),
+			afterHold: offsetYAt(drift.afterHold),
+			afterOut: offsetYAt(drift.afterOut),
+			holdOnly: offsetYAt(drift.holdOnly)
+		},
+		blur: {
+			afterIn: blurAt(drift.afterIn),
+			afterHold: blurAt(drift.afterHold),
+			afterOut: blurAt(drift.afterOut),
+			holdOnly: blurAt(drift.holdOnly)
+		},
+		alpha: {
+			afterIn: alphaAt(drift.afterIn),
+			afterHold: alphaAt(drift.afterHold),
+			afterOut: alphaAt(drift.afterOut),
+			holdOnly: alphaAt(drift.holdOnly)
+		},
+		scale: {
+			afterIn: scaleAt(drift.afterIn),
+			afterHold: scaleAt(drift.afterHold),
+			afterOut: scaleAt(drift.afterOut),
+			holdOnly: scaleAt(drift.holdOnly)
+		}
+	};
 }
 
 
@@ -474,7 +599,7 @@ function applyLayout(engine, el)
 
 
 
-// ランダム配置の漂い設定から、移動の軸と各区間の到達位置を組み立てる。漂わない設定やランダム配置以外、表示サイズが取れない場合は null を返す。到達位置は始点 (決まった配置位置 = 0) から選んだ向きへ進み続ける一本道で、afterIn → afterHold → afterOut の順に正方向へ増える。フェードが無い設定では速い区間を省き、holdOnly までのゆっくりした移動だけにする。
+// ランダム配置の漂い設定から、動かす CSS プロパティと各区間の到達値を組み立てる。漂わない設定やランダム配置以外、表示サイズが取れない場合は null を返す。from は出現時の値 (フェードあり)、afterIn → afterHold → afterOut が各区間の到達値。フェードが無い設定では holdFrom から holdOnly への一区間だけにする。平行移動 (上下・左右) は translate を px で、奥行き (前後) は中央基準の scale を拡大率で動かす。forward は中立 1.0 から拡大して手前へ近づく。backward はその逆再生にする (出現時に最大まで拡大しておき、中立へ縮める)。こうすると拡大率が forward と同じ範囲を逆順にたどり、影の各値 (拡大率の関数) もそのまま逆再生になる。
 function makeDriftPlan(engine, el)
 {
 	const config = engine.config;
@@ -486,40 +611,95 @@ function makeDriftPlan(engine, el)
 
 	const direction = config.driftDirection;
 
-	if (direction !== 'down' && direction !== 'right')
+	if (direction === 'down' || direction === 'right')
 	{
-		return null;
+		const axis = (direction === 'right') ? 'x' : 'y';
+		const dim = (axis === 'x') ? parseFloat(el.style.width) : parseFloat(el.style.height);
+
+		if (!isFinite(dim) || dim <= 0)
+		{
+			return null;
+		}
+
+		// 移動量は軸方向の表示サイズに対する割合で決め、始点 0 から正方向へ進む。
+		const fast = dim * DRIFT_FAST_FRACTION;
+		const slow = dim * DRIFT_SLOW_FRACTION;
+
+		return {
+			prop: (axis === 'x') ? '--drift-x' : '--drift-y',
+			unit: 'px',
+			from: 0,
+			afterIn: fast,
+			afterHold: fast + slow,
+			afterOut: fast + slow + fast,
+			holdFrom: 0,
+			holdOnly: slow
+		};
 	}
 
-	const axis = (direction === 'right') ? 'x' : 'y';
-	const dim = (axis === 'x') ? parseFloat(el.style.width) : parseFloat(el.style.height);
-
-	if (!isFinite(dim) || dim <= 0)
+	if (direction === 'forward')
 	{
-		return null;
+		// 中立 1.0 から拡大して手前へ近づく。出現時が中立で、表示中に拡大していく。
+		const f = DRIFT_FAST_FRACTION;
+		const s = DRIFT_SLOW_FRACTION;
+
+		return {
+			prop: '--drift-scale',
+			unit: '',
+			from: 1,
+			afterIn: 1 + f,
+			afterHold: 1 + f + s,
+			afterOut: 1 + f + s + f,
+			holdFrom: 1,
+			holdOnly: 1 + s
+		};
 	}
 
-	const fast = dim * DRIFT_FAST_FRACTION;
-	const slow = dim * DRIFT_SLOW_FRACTION;
+	if (direction === 'backward')
+	{
+		// forward の逆再生。出現時に最大まで拡大しておき、表示中に中立 1.0 へ縮めていく。各区間の値は forward の到達値を逆順に並べたもの。
+		const f = DRIFT_FAST_FRACTION;
+		const s = DRIFT_SLOW_FRACTION;
 
-	return {
-		axis,
-		afterIn: fast,
-		afterHold: fast + slow,
-		afterOut: fast + slow + fast,
-		holdOnly: slow
-	};
+		return {
+			prop: '--drift-scale',
+			unit: '',
+			from: 1 + f + s + f,
+			afterIn: 1 + f + s,
+			afterHold: 1 + f,
+			afterOut: 1,
+			holdFrom: 1 + s,
+			holdOnly: 1
+		};
+	}
+
+	return null;
 }
 
 
 
 
-// 漂いの1区間を当てる。軸方向の移動量を、与えた所要時間と加減速で目標値へ向かわせる。軸ごとのカスタムプロパティを書き換え、CSS 側のトランジションで補間させる。
-function driftTo(el, axis, value, durationMs, easing)
+// 漂いの1区間を当てる。動かすカスタムプロパティを、与えた所要時間と加減速で目標値へ向かわせる。プロパティの値を書き換え、CSS 側のトランジションで補間させる。unit は値に付ける単位 (平行移動は 'px'、拡大率は無単位の '')。
+function driftTo(el, prop, value, unit, durationMs, easing)
 {
 	el.style.setProperty('--drift-dur', durationMs + 'ms');
 	el.style.setProperty('--drift-ease', easing);
-	el.style.setProperty(axis === 'x' ? '--drift-x' : '--drift-y', value + 'px');
+	el.style.setProperty(prop, value + unit);
+}
+
+
+
+
+// 切り離した影の1区間を当てる。ずらし量 (x, y)・ぼかし・濃さ・拡大率を、画像の移動と同じ所要時間・加減速で目標値へ向かわせる。まとめて同じ時間軸の transition で動かすため、所要時間と加減速は一度だけ書き換える。
+function shadowTo(el, offsetX, offsetY, blurValue, alphaValue, scaleValue, durationMs, easing)
+{
+	el.style.setProperty('--drift-dur', durationMs + 'ms');
+	el.style.setProperty('--drift-ease', easing);
+	el.style.setProperty('--shadow-x', offsetX + 'px');
+	el.style.setProperty('--shadow-y', offsetY + 'px');
+	el.style.setProperty('--shadow-blur', blurValue + 'px');
+	el.style.setProperty('--shadow-alpha', alphaValue);
+	el.style.setProperty('--shadow-scale', scaleValue);
 }
 
 
@@ -604,6 +784,14 @@ function showNext(engine)
 		// 大きさが確定してから漂いの計画を組む。漂わない設定なら null になり、以後の移動処理は素通りする。
 		const drift = makeDriftPlan(engine, el);
 
+		// 漂いの始点 (出現時の値)。フェードの有無で始点が変わる。トランジションが効く前 (--drift-dur が既定の0ms) に当てて、最初の区間がここから補間するようにする。backward は最大まで拡大した状態で出現する。
+		const driftStart = drift ? ((fade > 0) ? drift.from : drift.holdFrom) : 0;
+
+		if (drift)
+		{
+			el.style.setProperty(drift.prop, driftStart + drift.unit);
+		}
+
 		// 動画の総尺 (秒) をミリ秒に直す。途切れない実数が取れた場合のみ採用する。
 		const videoMs = (item.type === 'video' && isFinite(el.duration)) ? el.duration * 1000 : 0;
 
@@ -616,6 +804,16 @@ function showNext(engine)
 		const driftEaseIn = driftEase(joinSlope, true);
 		const driftEaseOut = driftEase(joinSlope, false);
 
+		// 奥行きの向きのドロップシャドウの画像なら、影を切り離した別要素にして画像の裏へ置く。画像が手前へ来るほど影は下から滅り出てぼけ・薄れ、奥へ去るほど真下へ寄ってくっきり・濃くなる。それ以外は null になり、影は画像自身の drop-shadow のままになる。
+		let shadow = null;
+
+		if (drift && drift.prop === '--drift-scale' && isDecoupledShadow(config, el))
+		{
+			shadow = createShadowElement(engine, el, item, drift, driftStart);
+			engine.shadowElement = shadow.el;
+			engine.container.insertBefore(shadow.el, el);
+		}
+
 		// 追加直後に可視クラスを付けてフェードインさせる。同時に、漂いの最初の区間も始める。
 		requestAnimationFrame(() =>
 		{
@@ -623,25 +821,46 @@ function showNext(engine)
 			{
 				el.classList.add('visible');
 
+				if (shadow)
+				{
+					shadow.el.classList.add('visible');
+				}
+
 				if (drift)
 				{
 					if (fade > 0)
 					{
 						// フェードイン中はスッと進み、続いて滞留中はごくゆっくり進む。フェードの間は絵の輪郭が薄く、速い動きが目立たない。終端の速度を滞留中の低速にそろえたカーブで締め、境目で引っかからずに低速へつなぐ。
-						driftTo(el, drift.axis, drift.afterIn, fade, driftEaseIn);
+						driftTo(el, drift.prop, drift.afterIn, drift.unit, fade, driftEaseIn);
+
+						// 影のずらし量・ぼかし・濃さも画像の拡大と同じ時間軸・カーブで追従させる。
+						if (shadow)
+						{
+							shadowTo(shadow.el, shadow.offsetX.afterIn, shadow.offsetY.afterIn, shadow.blur.afterIn, shadow.alpha.afterIn, shadow.scale.afterIn, fade, driftEaseIn);
+						}
 
 						later(engine, () =>
 						{
 							if (el === engine.currentElement)
 							{
-								driftTo(el, drift.axis, drift.afterHold, effectiveHold, 'linear');
+								driftTo(el, drift.prop, drift.afterHold, drift.unit, effectiveHold, 'linear');
+
+								if (shadow)
+								{
+									shadowTo(shadow.el, shadow.offsetX.afterHold, shadow.offsetY.afterHold, shadow.blur.afterHold, shadow.alpha.afterHold, shadow.scale.afterHold, effectiveHold, 'linear');
+								}
 							}
 						}, fade);
 					}
 					else
 					{
 						// フェードが無い設定では速い区間を設けず、滞留中のごくゆっくりした移動だけにする。くっきり見えている絵が急に動き出す違和感を避ける。
-						driftTo(el, drift.axis, drift.holdOnly, effectiveHold, 'linear');
+						driftTo(el, drift.prop, drift.holdOnly, drift.unit, effectiveHold, 'linear');
+
+						if (shadow)
+						{
+							shadowTo(shadow.el, shadow.offsetX.holdOnly, shadow.offsetY.holdOnly, shadow.blur.holdOnly, shadow.alpha.holdOnly, shadow.scale.holdOnly, effectiveHold, 'linear');
+						}
 					}
 				}
 			});
@@ -652,10 +871,20 @@ function showNext(engine)
 		{
 			el.classList.remove('visible');
 
+			if (shadow)
+			{
+				shadow.el.classList.remove('visible');
+			}
+
 			if (drift && fade > 0)
 			{
 				// フェードアウト中もスッと進んで去る。始端の速度を直前の低速にそろえたカーブで、境目で引っかからずに速さを上げ、薄れていく間に短く移動する。
-				driftTo(el, drift.axis, drift.afterOut, fade, driftEaseOut);
+				driftTo(el, drift.prop, drift.afterOut, drift.unit, fade, driftEaseOut);
+
+				if (shadow)
+				{
+					shadowTo(shadow.el, shadow.offsetX.afterOut, shadow.offsetY.afterOut, shadow.blur.afterOut, shadow.alpha.afterOut, shadow.scale.afterOut, fade, driftEaseOut);
+				}
 			}
 
 			later(engine, () =>

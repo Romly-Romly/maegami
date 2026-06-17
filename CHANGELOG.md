@@ -2,6 +2,17 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.3.0] - 2026-06-17
+
+### Added
+- A "depth" direction for the slow drift option (front-to-back / back-to-front), combining fade and scaling to convey approaching and receding motion.
+- Icons for some items in the settings screen and the tray menu.
+- The "Folders to display" setting now scans subfolders recursively, up to 3 levels deep.
+
+### Changed
+- Adjusted some configurable ranges, hint wording, and so on.
+- Other minor fixes.
+
 ## [1.2.0] - 2026-06-16
 
 ### Added

@@ -15,6 +15,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+/* 設定画面のアイコンに使う自作グリフのフォント。 */
+@font-face {
+	font-family: "romoji";
+	src: url("../assets/romoji.ttf") format("truetype");
+}
+
 * {
 	margin: 0;
 	padding: 0;
@@ -107,6 +113,22 @@ body {
 	font-weight: 600;
 }
 
+/* 設定項目やサイドバー項目に添える自作グリフのアイコン。説明文と同じ淡さで控えめに置く。 */
+.ico {
+	font-family: "romoji";
+	font-style: normal;
+	font-weight: normal;
+	color: var(--text-dim);
+	line-height: 1;
+}
+
+/* サイドバーのレイヤー項目では項目名と同じ行に並ぶため、文字の左に間隔を空け、少し下げて行に合わせる。 */
+.nav-item .ico {
+	font-size: 15px;
+	margin-right: 8px;
+	vertical-align: -1px;
+}
+
 /* レイヤー項目はサイドバーの幅いっぱいに縦へ積む。div で囲っているため、flex 列にしないと button が既定の inline-block のまま横へ流れる。 */
 #layer-nav {
 	display: flex;
@@ -147,6 +169,19 @@ body {
 	justify-content: space-between;
 	gap: 16px;
 	padding: 14px 18px;
+}
+
+/* アイコン付きの設定項目。WinUI の SettingsCard と同様に、アイコンを左の独立した列に置き、その右で項目名と説明文を縦に積んで左端を揃える。 */
+.row-lead {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.row-lead .ico {
+	font-size: 18px;
+	flex-shrink: 0;
 }
 
 /* 関連する設定を親カードの下へ入れ子で並べ、SettingsExpander のように見せる。 */
