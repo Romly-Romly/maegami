@@ -39,6 +39,10 @@ html, body {
 /* 奥行き方向のゆっくり移動。配置時の表示サイズ (1.0) を基準に拡大・縮小し、手前へ近づく/奥へ遠ざかる動きを表す。平行移動と同じく @property で数値型として宣言し、トランジションで補間させる。 */
 @property --drift-scale { syntax: '<number>'; inherits: false; initial-value: 1; }
 
+/* カーソル避けの逃げオフセット。見やすさのためカーソルから離す移動で、ゆっくり移動 (--drift-x/y) とは別の独立した軸として持ち、別の所要時間 (--flee-dur)・加減速 (--flee-ease) で同時に効かせる。@property で長さ型として宣言し、トランジションで補間させる。 */
+@property --flee-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --flee-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
 /* 切り離した影のぼかし半径。奥行きの移動と同じ時間軸で補間させ、手前へ近づくほど (拡大率が大きいほど) 強くぼかす。 */
 @property --shadow-blur { syntax: '<length>'; inherits: false; initial-value: 0px; }
 
@@ -87,13 +91,15 @@ html, body {
 	object-fit: contain;
 	object-position: center center;
 	opacity: 0;
-	/* ランダム配置のゆっくり移動を配置位置へ重ねる。配置は left/top で決まり、移動はそこからの translate と中央基準の scale として独立に効かせる。平行移動の向きでは --drift-scale が 1、奥行きの向きでは --drift-x/y が 0 のままで、どちらか一方だけが動く。漂わない設定では双方が初期値のままで動かない。 */
-	transform: translate(var(--drift-x, 0px), var(--drift-y, 0px)) scale(var(--drift-scale, 1));
+	/* ランダム配置のゆっくり移動とカーソル避けを配置位置へ重ねる。配置は left/top で決まり、ゆっくり移動はそこからの translate と中央基準の scale、カーソル避けはさらにその上へ重ねる別の translate として、互いに独立に効かせる。scale より左の translate はスケールの影響を受けないため、両 translate ともスケールに依らず実 px ぶん動く。ゆっくり移動の平行移動の向きでは --drift-scale が 1、奥行きの向きでは --drift-x/y が 0 のままで、どちらか一方だけが動く。カーソル避けが無効なら --flee-x/y は初期値のまま動かない。 */
+	transform: translate(var(--flee-x, 0px), var(--flee-y, 0px)) translate(var(--drift-x, 0px), var(--drift-y, 0px)) scale(var(--drift-scale, 1));
 	transition:
 		opacity var(--fade, 1500ms) ease-in-out,
 		--drift-x var(--drift-dur, 0ms) var(--drift-ease, linear),
 		--drift-y var(--drift-dur, 0ms) var(--drift-ease, linear),
-		--drift-scale var(--drift-dur, 0ms) var(--drift-ease, linear);
+		--drift-scale var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--flee-x var(--flee-dur, 0ms) var(--flee-ease, linear),
+		--flee-y var(--flee-dur, 0ms) var(--flee-ease, linear);
 	will-change: opacity, transform;
 }
 

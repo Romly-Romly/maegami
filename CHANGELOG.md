@@ -2,6 +2,13 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.4.0] - 2026-06-21
+
+- Added an **Avoid cursor** setting. When the wallpaper gets in the way, images can slide aside to get out of your way.
+- Added macOS support. The build is unsigned, so you will see a warning.
+- Other minor fixes.
+
+
 ## [1.3.0] - 2026-06-17
 
 ### Added

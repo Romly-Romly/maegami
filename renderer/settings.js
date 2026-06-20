@@ -228,11 +228,11 @@ function updateSizeDesc(root, mode)
 
 
 
-// ゆっくり移動はランダム配置のときだけ効くため、それ以外の表示方法では隠す。
+// ゆっくり移動とカーソル避けはランダム配置のときだけ効くため、それ以外の表示方法では隠す。
 function updateDriftRowVisibility(root, mode)
 {
 	const hidden = (mode !== 'random');
-	root.querySelectorAll('.drift-row').forEach((row) => row.classList.toggle('hidden', hidden));
+	root.querySelectorAll('.drift-row, .flee-row').forEach((row) => row.classList.toggle('hidden', hidden));
 }
 
 
@@ -310,6 +310,11 @@ function wireLayer(root, index)
 	root.querySelector('.video-play-full').addEventListener('change', (event) =>
 	{
 		sendLayer(index, { videoPlayFull: event.target.checked });
+	});
+
+	root.querySelector('.cursor-avoid').addEventListener('change', (event) =>
+	{
+		sendLayer(index, { cursorAvoid: event.target.checked });
 	});
 
 	for (const button of root.querySelectorAll('.display-mode button'))
@@ -428,6 +433,7 @@ function refreshLayer(index, layer)
 	setSlider(root, '.size-percent', '.size-percent-value', layer.sizePercent, (v) => v + '%');
 	setSlider(root, '.corner-percent', '.corner-percent-value', layer.cornerPercent, (v) => v + '%');
 	ui.driftDirectionDropdown.setValue(layer.driftDirection || 'none');
+	root.querySelector('.cursor-avoid').checked = !!layer.cursorAvoid;
 	updateSizeRowsVisibility(root, layer.displayMode);
 	updateDriftRowVisibility(root, layer.displayMode);
 	updateDisplayModeDesc(root, layer.displayMode);

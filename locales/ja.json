@@ -72,6 +72,9 @@
 	"layer.drift.forward": "奥から手前",
 	"layer.drift.backward": "手前から奥",
 
+	"layer.flee.title": "カーソルを避ける",
+	"layer.flee.desc": "表示中の画像にカーソルが近づくと避ける。",
+
 	"layer.effect.title": "エフェクト",
 	"layer.effect.none": "なし",
 	"layer.effect.feather": "ぼかし",

@@ -53,6 +53,7 @@ const layerDefaults = {
 	sizePercent: 100,
 	cornerPercent: 0,
 	driftDirection: 'none',
+	cursorAvoid: false,
 	displayEffect: 'none',
 	shadowX: 0,
 	shadowY: 14,
@@ -68,7 +69,7 @@ const layerDefaults = {
 const globalDisplayKeys = ['opacity', 'cursorMask', 'maskRadius', 'cursorTrail', 'trailDuration'];
 
 // レイヤー設定のうち、再生中の一枚へその場で当てれば足りるキー。プレイリストの組み直しや再走査を伴わない大きさ・角丸・エフェクト・影がこれにあたる。
-const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'driftDirection', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
+const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'driftDirection', 'cursorAvoid', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
 
 let settings = { ...globalDefaults, layers: [{ ...layerDefaults }] };
 let win = null;
@@ -673,8 +674,8 @@ function openSettings()
 		minWidth: 640,
 		minHeight: 480,
 		title: t('settings.windowTitle'),
-		// 同梱したアプリアイコンを明示する。ビルド資材ではなく同梱物の icon.ico を指すことで、開発実行でも配布版でも同じアイコンが出る。
-		icon: path.join(__dirname, 'assets', 'icon.ico'),
+		// 同梱したアプリアイコンを明示する。ビルド資材ではなく同梱物の icon.ico を指すことで、開発実行でも配布版でも同じアイコンが出る。macOS は window の icon を使わず .ico も読めないため、Windows 等でのみ渡す。
+		...(process.platform !== 'darwin' ? { icon: path.join(__dirname, 'assets', 'icon.ico') } : {}),
 		autoHideMenuBar: true,
 		backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
 		webPreferences: {
@@ -976,13 +977,14 @@ function chooseDirectory(index)
 
 
 
-// トレイアイコンを生成する。macOS のメニューバーはテンプレート画像を求めるため別扱いとし、それ以外は再生中と一時停止中でアイコンを出し分ける。再生中は設定ウィンドウと共通のアプリアイコン (icon.ico)、一時停止中は一時停止用アイコン (pause.ico) を返す。
+// トレイアイコンを生成する。どのプラットフォームでも再生中と一時停止中でアイコンを出し分ける。macOS のメニューバーはテンプレート画像を求めるため別扱いで、再生中は trayTemplate.png、一時停止中は trayTemplatePause.png を返す。それ以外は再生中が設定ウィンドウと共通のアプリアイコン (icon.ico)、一時停止中が一時停止用アイコン (pause.ico) になる。
 function createTrayIcon()
 {
 	if (process.platform === 'darwin')
 	{
-		// メニューバーではテンプレート画像にすると、背景の明暗や選択状態に合わせて OS が色を当て直してくれる。素材は黒とアルファだけのモノクロで、@2x は createFromPath が同じフォルダから自動で取り込む。
-		const image = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
+		// メニューバーではテンプレート画像にすると、背景の明暗や選択状態に合わせて OS が色を当て直してくれる。素材は黒とアルファだけのモノクロで、@2x は createFromPath が同じフォルダから自動で取り込む。一時停止中は trayTemplatePause.png に差し替え、メニューバーを見ただけで再生が止まっていると分かるようにする。
+		const templateFile = settings.paused ? 'trayTemplatePause.png' : 'trayTemplate.png';
+		const image = nativeImage.createFromPath(path.join(__dirname, 'assets', templateFile));
 		image.setTemplateImage(true);
 		return image;
 	}
@@ -1022,7 +1024,12 @@ function buildTray()
 	if (!tray)
 	{
 		tray = new Tray(createTrayIcon());
-		tray.on('click', openSettings);
+
+		// macOS では setContextMenu を設定すると左クリックでもメニューが開くため、左クリックに設定画面を割り当てるとメニューと設定が同時に開いてしまう。macOS の作法に合わせて左クリックはメニュー表示のみとし、設定はメニュー内の項目から開く。Windows は左クリックで設定を開く。
+		if (process.platform !== 'darwin')
+		{
+			tray.on('click', openSettings);
+		}
 	}
 	else
 	{

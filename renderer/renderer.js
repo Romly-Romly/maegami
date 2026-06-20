@@ -74,6 +74,16 @@ const CURSOR_SMOOTH_TAU = 60;
 // ランダム配置でカーソルを避ける余裕 (px)。出現する画像の矩形がこの距離より内側にカーソルが入るほど候補を減点する。これより離れていれば減点はなく、配置のランダム性をそのまま保つ。
 const CURSOR_AVOID_MARGIN = 140;
 
+// カーソル回避 (flee) で逃げ出す距離 (px)。表示中の画像の矩形とカーソルの隔たりがこれより縮むと、カーソルから離れる向きへ滑って逃げる。
+const FLEE_TRIGGER = 120;
+
+// カーソル回避で逃げ切る距離 (px)。逃げた後に画像の矩形とカーソルの間にこれだけ空ける。逃げ出す距離より大きくして、逃げた直後に再び逃げ出す条件へ入らないようにする (連続して動き続けるのを防ぐ)。
+const FLEE_CLEAR = 280;
+
+// カーソル回避で逃げる所要時間 (ミリ秒) と加減速。終端でやわらかく止まるカーブにして、すっと逃げて落ち着くようにする。
+const FLEE_DURATION = 700;
+const FLEE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 // ランダム配置のゆっくり移動の距離を、漂う軸方向の表示サイズに対する割合で決める。絵の大小に比例した控えめな移動になる。フェードに重ねて速く進む区間と、表示中にごくゆっくり進む区間で割合を分け、緩急を付ける。
 const DRIFT_FAST_FRACTION = 0.06;
 const DRIFT_SLOW_FRACTION = 0.04;
@@ -732,6 +742,118 @@ function driftEase(joinSlope, decel)
 
 
 
+// カーソル回避の逃げ先のオフセット (配置位置からの translate 量) を決める。配置位置 (baseLeft/baseTop) を起点に、カーソルから矩形の中心へ向かう向きへ、矩形がカーソルから FLEE_CLEAR だけ空く位置まで中心を押し出す。逃げ先は配置のランダム性が許す範囲 (画面内、画像が画面より大きければ元の配置と同じはみ出し幅まで) に収める。押し出した先が壁に当たってまだカーソルに近い場合は、カーソルから遠い側の端へ寄せて壁沿いに逃がす。
+function fleeOffset(baseLeft, baseTop, width, height)
+{
+	const stageW = stage.clientWidth;
+	const stageH = stage.clientHeight;
+
+	const baseCenterX = baseLeft + width / 2;
+	const baseCenterY = baseTop + height / 2;
+
+	// 配置位置を起点に、カーソルから中心へ向かう向きを単位ベクトルにする。中心がカーソルにほぼ重なるときは向きが定まらないため右向きを既定にする。
+	let dirX = baseCenterX - lastCursor.x;
+	let dirY = baseCenterY - lastCursor.y;
+	let len = Math.hypot(dirX, dirY);
+
+	if (len < 1)
+	{
+		dirX = 1;
+		dirY = 0;
+		len = 1;
+	}
+
+	dirX /= len;
+	dirY /= len;
+
+	// その向きに矩形を置いたときの中心から縁までの距離 (支持距離) に逃げ切る余裕を足したぶんだけ、カーソルから中心を離す。
+	const reach = Math.abs(dirX) * width / 2 + Math.abs(dirY) * height / 2 + FLEE_CLEAR;
+	const targetCenterX = lastCursor.x + dirX * reach;
+	const targetCenterY = lastCursor.y + dirY * reach;
+
+	// 配置のランダム性が許す left/top の範囲。画像が画面に収まるなら画面内、画面より大きければ元の配置と同じく端が負まで許す。
+	const minLeft = Math.min(0, stageW - width);
+	const maxLeft = Math.max(0, stageW - width);
+	const minTop = Math.min(0, stageH - height);
+	const maxTop = Math.max(0, stageH - height);
+
+	let left = Math.min(Math.max(targetCenterX - width / 2, minLeft), maxLeft);
+	let top = Math.min(Math.max(targetCenterY - height / 2, minTop), maxTop);
+
+	// 壁に当たって押し出しきれず、まだカーソルに近い場合は、カーソルから遠い側の端へ寄せて壁沿いに逃がす。
+	if (cursorPenalty({ left, top, width, height }, lastCursor, FLEE_TRIGGER) > 0)
+	{
+		left = (lastCursor.x > stageW / 2) ? minLeft : maxLeft;
+		top = (lastCursor.y > stageH / 2) ? minTop : maxTop;
+	}
+
+	return { dx: left - baseLeft, dy: top - baseTop };
+}
+
+
+
+
+// カーソル回避の逃げオフセットを当てる。ゆっくり移動 (--drift-*) とは別の軸・別の時間軸で動かすため、専用の --flee-x / --flee-y と所要時間・加減速を書き換え、CSS のトランジションで滑らせる。
+function fleeTo(el, prop, value)
+{
+	el.style.setProperty('--flee-dur', FLEE_DURATION + 'ms');
+	el.style.setProperty('--flee-ease', FLEE_EASE);
+	el.style.setProperty(prop, value + 'px');
+}
+
+
+
+
+// カーソル回避が有効なランダム配置のレイヤーについて、表示中の画像がカーソルへ近づきすぎたら逃がす。逃げ先のオフセットを覚えさせ (_fleeX / _fleeY)、--flee-x / --flee-y を書き換えて CSS のトランジションで滑らせる。ゆっくり移動とは独立した別オフセットなので、逃げる間も逃げた先でもゆっくり移動はそのまま継続する。逃げた後はオフセットを保ったまま動かさず、再びカーソルが近づいたときだけ次の逃げ先へ移る。カーソルを移すたびに呼ぶ。
+function evaluateFlee()
+{
+	if (!lastCursor)
+	{
+		return;
+	}
+
+	for (const engine of engines)
+	{
+		const config = engine.config;
+		const el = engine.currentElement;
+
+		if (!config || config.displayMode !== 'random' || !config.cursorAvoid || !el)
+		{
+			continue;
+		}
+
+		const baseLeft = parseFloat(el.style.left);
+		const baseTop = parseFloat(el.style.top);
+		const width = parseFloat(el.style.width);
+		const height = parseFloat(el.style.height);
+
+		// 大きさ・位置がまだ確定していない要素は逃がしようがないので飛ばす。
+		if (!isFinite(baseLeft) || !isFinite(baseTop) || !isFinite(width) || !isFinite(height))
+		{
+			continue;
+		}
+
+		const offsetX = el._fleeX || 0;
+		const offsetY = el._fleeY || 0;
+		const rect = { left: baseLeft + offsetX, top: baseTop + offsetY, width, height };
+
+		// 今の位置でカーソルから十分離れていれば動かさない。逃げ出す距離より近づいて初めて逃げる。
+		if (cursorPenalty(rect, lastCursor, FLEE_TRIGGER) <= 0)
+		{
+			continue;
+		}
+
+		const target = fleeOffset(baseLeft, baseTop, width, height);
+		el._fleeX = target.dx;
+		el._fleeY = target.dy;
+		fleeTo(el, '--flee-x', target.dx);
+		fleeTo(el, '--flee-y', target.dy);
+	}
+}
+
+
+
+
 // このレイヤーのメディアを1枚表示し、フェードイン → 滞留 → フェードアウト → 次へ、を繰り返す。プレイリストが空のレイヤーは何も描かずに止まる。
 function showNext(engine)
 {
@@ -1357,6 +1479,7 @@ window.maegami.onCursor((pos) =>
 	// 画面内にいる間だけ覚える。画面外へ出たら回避の必要が無いので忘れる。
 	lastCursor = pos.inside ? { x: pos.x, y: pos.y } : null;
 	moveCursorMask(pos);
+	evaluateFlee();
 });
 
 window.maegami.onAdvance(() =>

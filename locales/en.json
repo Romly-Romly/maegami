@@ -72,6 +72,9 @@
 	"layer.drift.forward": "Back to front",
 	"layer.drift.backward": "Front to back",
 
+	"layer.flee.title": "Avoid the cursor",
+	"layer.flee.desc": "Moves the shown image away when the cursor nears it.",
+
 	"layer.effect.title": "Effect",
 	"layer.effect.none": "None",
 	"layer.effect.feather": "Feather",

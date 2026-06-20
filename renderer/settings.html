@@ -106,9 +106,12 @@
 				<h1 data-i18n="general.title">全般</h1>
 				<div class="card">
 					<div class="row">
-						<div class="row-text">
-							<div class="row-title" data-i18n="global.language.title">言語</div>
-							<div class="row-desc" data-i18n="global.language.desc">メニューと設定画面の表示言語。</div>
+						<div class="row-lead">
+							<span class="ico" aria-hidden="true">&#xE011;</span>
+							<div class="row-text">
+								<div class="row-title" data-i18n="global.language.title">言語</div>
+								<div class="row-desc" data-i18n="global.language.desc">メニューと設定画面の表示言語。</div>
+							</div>
 						</div>
 						<div class="row-control">
 							<div class="dropdown language" data-value="system">
@@ -243,6 +246,18 @@
 								<li class="dropdown-option" data-value="backward" role="option" data-i18n="layer.drift.backward">手前から奥</li>
 							</ul>
 						</div>
+					</div>
+				</div>
+				<div class="sub-row flee-row hidden">
+					<div class="row-text">
+						<div class="row-title" data-i18n="layer.flee.title">カーソルを避ける</div>
+						<div class="row-desc" data-i18n="layer.flee.desc">表示中の画像にカーソルが近づくと避ける。</div>
+					</div>
+					<div class="row-control">
+						<label class="switch">
+							<input type="checkbox" class="cursor-avoid">
+							<span class="track"></span>
+						</label>
 					</div>
 				</div>
 			</div>
