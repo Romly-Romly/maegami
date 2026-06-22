@@ -131,7 +131,9 @@ html, body {
 		--shadow-x var(--drift-dur, 0ms) var(--drift-ease, linear),
 		--shadow-y var(--drift-dur, 0ms) var(--drift-ease, linear),
 		--shadow-alpha var(--drift-dur, 0ms) var(--drift-ease, linear),
-		--shadow-scale var(--drift-dur, 0ms) var(--drift-ease, linear);
+		--shadow-scale var(--drift-dur, 0ms) var(--drift-ease, linear),
+		--flee-x var(--flee-dur, 0ms) var(--flee-ease, linear),
+		--flee-y var(--flee-dur, 0ms) var(--flee-ease, linear);
 	will-change: opacity, filter, transform;
 }
 

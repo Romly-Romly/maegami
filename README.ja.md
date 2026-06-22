@@ -15,12 +15,24 @@
 
 ## ダウンロード
 
-[最新リリース](https://github.com/Romly-Romly/maegami/releases/latest) から、お好みの形式でダウンロードして下さい。
+[最新リリース](https://github.com/Romly-Romly/maegami/releases/latest) からダウンロードして下さい。
+
+### Windows
 
 - **インストーラ版** — `Maegami Setup *.exe`
 - **ポータブル版** — `*-win.zip`
 
-本アプリはコード署名をしていないため、初回起動時に Windows SmartScreen の警告が表示されます。「詳細情報」をクリックし、「実行」を選ぶと起動できます。自己責任でどうぞ。
+コード署名をしていないため、初回起動時に Windows SmartScreen の警告が表示されます。「詳細情報」をクリックし、「実行」を選ぶと起動できます。自己責任でどうぞ。
+
+### macOS
+
+- **ディスクイメージ版** — `Maegami-*.dmg` (Apple Silicon 専用)
+
+ダウンロードした `.dmg` を開き、中の `Maegami.app` を「アプリケーション」フォルダにドラッグして下さい。未署名のためそのままでは開けず、 *ゴミ箱に捨てろ* と言われてしまいます(ひどい😭)。ターミナルから次のコマンドで検疫属性を外すと起動できるようになります。自己責任でどうぞ。
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Maegami.app
+```
 
 
 

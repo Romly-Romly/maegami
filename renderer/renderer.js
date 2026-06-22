@@ -314,14 +314,14 @@ function createShadowElement(engine, image, item, drift, startScale)
 {
 	const config = engine.config;
 
-	// 外側はぼかし・ずらし量・拡大率・フェード・配置を持つ。画像と同じ配置の箱に置く。ずらしは --shadow-x / --shadow-y、拡大率は --shadow-scale で動かす。transform は中心基準で拡大してからずらすよう scale() を後に並べる (ずらし量は画面上の px のまま効かせる)。
+	// 外側はぼかし・ずらし量・拡大率・フェード・配置を持つ。画像と同じ配置の箱に置く。ずらしは --shadow-x / --shadow-y、拡大率は --shadow-scale で動かす。先頭の translate はカーソル避けの逃げ (--flee-x / --flee-y) で、画像と同じ値を書き込んで影も一緒に逃がす。scale より左に置いて拡大の影響を受けず画面上の px のまま効かせ、影自身のずらしと拡大は scale() を後に並べて中心基準で効かせる。
 	const el = document.createElement('div');
 	el.className = 'media-shadow';
 	el.style.left = image.style.left;
 	el.style.top = image.style.top;
 	el.style.width = image.style.width;
 	el.style.height = image.style.height;
-	el.style.transform = 'translate(var(--shadow-x, 0px), var(--shadow-y, 0px)) scale(var(--shadow-scale, 1))';
+	el.style.transform = 'translate(var(--flee-x, 0px), var(--flee-y, 0px)) translate(var(--shadow-x, 0px), var(--shadow-y, 0px)) scale(var(--shadow-scale, 1))';
 	el.style.setProperty('--fade', config.fadeDuration + 'ms');
 
 	// 内側は画像のアルファ形状を黒で写す面。ランダム配置では箱が画像の縦横比そのものなので、引き伸ばし (100% 100%) で輪郭がそのまま重なる。影の濃さは背景色の不透明度 (--shadow-alpha) で持ち、フェードは外側の opacity に任せる。--shadow-alpha は外側で動かして内側へ継承させる。
@@ -848,6 +848,13 @@ function evaluateFlee()
 		el._fleeY = target.dy;
 		fleeTo(el, '--flee-x', target.dx);
 		fleeTo(el, '--flee-y', target.dy);
+
+		// 切り離した影は画像と別要素なので、同じ逃げオフセットと時間軸を影へも書き込んで一緒に逃がす。
+		if (engine.shadowElement)
+		{
+			fleeTo(engine.shadowElement, '--flee-x', target.dx);
+			fleeTo(engine.shadowElement, '--flee-y', target.dy);
+		}
 	}
 }
 

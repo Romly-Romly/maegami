@@ -2,6 +2,15 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.4.5] - 2026-06-22
+
+- While paused, the overlay is now hidden so it no longer interferes with selecting a window for screenshots.
+- Reworked the macOS icon using Icon Composer.
+- Added instructions to the README for getting the app to launch on macOS.
+- Fixed a bug where shadows could be left behind when the "Avoid cursor" setting was enabled.
+
+
+
 ## [1.4.0] - 2026-06-21
 
 - Added an **Avoid cursor** setting. When the wallpaper gets in the way, images can slide aside to get out of your way.

@@ -16,12 +16,24 @@ You can set the opacity, and you can keep the area around your cursor clear, so 
 
 ## Download
 
-Grab your preferred format from the [latest release](https://github.com/Romly-Romly/maegami/releases/latest).
+Download from the [latest release](https://github.com/Romly-Romly/maegami/releases/latest).
+
+### Windows
 
 - **Installer** — `Maegami Setup *.exe`
 - **Portable** — `*-win.zip`
 
 The app is not code-signed, so Windows SmartScreen will warn you on first launch. Click "More info", then "Run anyway" to start it. Use at your own risk.
+
+### macOS
+
+- **Disk image** — `Maegami-*.dmg` (Apple Silicon only)
+
+Open the downloaded `.dmg` and drag `Maegami.app` into your Applications folder. Since it isn't signed, macOS won't let you open it — it just tells you to *move it to the Trash* (rude! 😭). Run the following command in Terminal to strip the quarantine attribute, and it will launch. Use at your own risk.
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Maegami.app
+```
 
 
 

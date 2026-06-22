@@ -1,6 +1,6 @@
 {
 	"name": "maegami",
-	"version": "1.4.0",
+	"version": "1.4.5",
 	"description": "A translucent, always-on-top wallpaper-changer-style overlay for image and video slideshows on your desktop.",
 	"main": "main.js",
 	"author": "Romly",
@@ -16,6 +16,7 @@
 		"directories": {
 			"output": "dist"
 		},
+		"afterPack": "build/afterPack.js",
 		"files": [
 			"main.js",
 			"preload.js",

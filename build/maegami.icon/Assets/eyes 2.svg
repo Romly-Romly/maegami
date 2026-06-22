@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 256 256" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1,0,0,1,0,-612)">
+        <rect id="mac-composer" serif:id="mac composer" x="0" y="612" width="256" height="256" style="fill:none;"/>
+        <g id="mac-composer1" serif:id="mac composer">
+            <g transform="matrix(1,0,0,1,-0.106746,305.770512)">
+                <g transform="matrix(1,0,0,1,-0,8)">
+                    <path d="M104.938,504.179C101.527,504.697 98.338,502.348 97.821,498.938C97.303,495.527 99.652,492.338 103.062,491.821C118.98,489.405 135.567,489.384 152.868,491.811C156.284,492.29 158.668,495.452 158.189,498.868C157.71,502.284 154.548,504.668 151.132,504.189C135.085,501.939 119.701,501.938 104.938,504.179Z"/>
+                </g>
+                <g transform="matrix(2,0,0,1.5,-72,-205)">
+                    <ellipse cx="76" cy="450" rx="4" ry="8" style="stroke:black;stroke-width:1.62px;"/>
+                </g>
+                <g transform="matrix(2,0,0,1.5,-184,-205)">
+                    <ellipse cx="180" cy="450" rx="4" ry="8" style="stroke:black;stroke-width:1.62px;"/>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

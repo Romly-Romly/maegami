@@ -453,16 +453,30 @@ function pushDisplay()
 
 
 
-// オーバーレイのウィンドウ状態 (不透明度・最前面指定・カーソル追従) を現在の設定へ合わせ、設定ウィンドウを前面へ戻す。全体設定を更新したときに共通で呼ぶ。
+// オーバーレイのウィンドウ状態 (表示・不透明度・最前面指定・カーソル追従) を現在の設定へ合わせ、設定ウィンドウを前面へ戻す。全体設定を更新したときに共通で呼ぶ。
 function syncWindowState()
 {
 	if (win && !win.isDestroyed())
 	{
-		win.setOpacity(settings.opacity);
+		if (settings.paused)
+		{
+			// 一時停止中はオーバーレイを隠す。全画面を覆ったままだと、クリックは素通りしてもスクリーンショットアプリのウィンドウ選択が常にこのウィンドウを掴んでしまい、下のウィンドウを選べなくなるため。
+			win.hide();
+		}
+		else
+		{
+			// 再生中は表示する。隠していた状態から戻すときも、フォーカスを奪わないよう showInactive で出す。
+			if (!win.isVisible())
+			{
+				win.showInactive();
+			}
 
-		// 設定ウィンドウの操作などをきっかけに最前面指定が外れることがあるため、反映のたびに貼り直す。
-		win.setAlwaysOnTop(true, 'screen-saver');
-		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+			win.setOpacity(settings.opacity);
+
+			// 設定ウィンドウの操作などをきっかけに最前面指定が外れることがあるため、反映のたびに貼り直す。
+			win.setAlwaysOnTop(true, 'screen-saver');
+			win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+		}
 	}
 
 	// オーバーレイを貼り直すと半透明の本体が設定ウィンドウの手前へ出るため、設定ウィンドウが開いていれば即座に前面へ戻す。
@@ -740,6 +754,12 @@ function startTopmostKeeper()
 		if (settingsWin && !settingsWin.isDestroyed())
 		{
 			settingsWin.moveTop();
+			return;
+		}
+
+		// 一時停止中はオーバーレイを隠しているため、前面へ押し上げる必要はない。
+		if (settings.paused)
+		{
 			return;
 		}
 
@@ -1196,7 +1216,8 @@ else
 	// 二つ目の起動が試みられた際は、常駐中のウィンドウの表示と最前面指定を念のため再確認する。
 	app.on('second-instance', () =>
 	{
-		if (win && !win.isDestroyed())
+		// 一時停止中は意図的にオーバーレイを隠しているため、二重起動をきっかけに勝手に復帰させない。
+		if (win && !win.isDestroyed() && !settings.paused)
 		{
 			win.showInactive();
 			win.setAlwaysOnTop(true, 'screen-saver');
