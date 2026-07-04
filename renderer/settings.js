@@ -138,6 +138,42 @@ function setupDropdown(root, onChange)
 
 
 
+// エクスパンダーにしたカードのヘッダー行をクリックすると、配下の sub-row 群をまとめて開閉する。ヘッダーの文字部分とシェブロンが開閉を担い、行内のコントロール本体 (トグル・セグメント・ドロップダウン) のクリックは開閉と切り離して本来の操作に任せる。畳んでいる間は中身の overflow を切って高さの遷移を成立させ、開ききった後はドロップダウンのポップアップがカードの外へ出られるよう overflow を解放する。
+function setupExpander(card)
+{
+	const header = card.querySelector(':scope > .row');
+	const detail = card.querySelector(':scope > .card-detail');
+	const inner = detail.querySelector('.card-detail-inner');
+
+	header.addEventListener('click', (event) =>
+	{
+		if (event.target.closest('.row-control') && !event.target.closest('.expander-chevron'))
+		{
+			return;
+		}
+
+		const willExpand = !card.classList.contains('expanded');
+
+		if (!willExpand)
+		{
+			inner.style.overflow = '';
+		}
+
+		card.classList.toggle('expanded', willExpand);
+	});
+
+	detail.addEventListener('transitionend', (event) =>
+	{
+		if (event.propertyName === 'grid-template-rows' && card.classList.contains('expanded'))
+		{
+			inner.style.overflow = 'visible';
+		}
+	});
+}
+
+
+
+
 // サイドバーの選択に応じて表示するセクションを切り替える。対象が存在しない場合は全体へ戻す。
 function switchSection(targetId)
 {
@@ -194,11 +230,12 @@ function sendLayer(index, patch)
 
 
 
-// 表示サイズと角丸は画像を収める・ランダム配置のときだけ効くため、画面を覆うときはどちらも隠す。
+// 表示サイズと角丸は画像を収める・ランダム配置・四隅のときだけ効くため、画面を覆うときはどちらも隠す。四隅の余白は四隅のときだけ効くため、それ以外では隠す。
 function updateSizeRowsVisibility(root, mode)
 {
 	const hidden = (mode === 'cover');
 	root.querySelectorAll('.size-row, .corner-row').forEach((row) => row.classList.toggle('hidden', hidden));
+	root.querySelectorAll('.corner-margin-row').forEach((row) => row.classList.toggle('hidden', mode !== 'corners'));
 }
 
 
@@ -228,11 +265,11 @@ function updateSizeDesc(root, mode)
 
 
 
-// ゆっくり移動とカーソル避けはランダム配置のときだけ効くため、それ以外の表示方法では隠す。
+// ゆっくり移動はランダム配置のときだけ効くため、それ以外では隠す。カーソル避けはランダム配置と四隅で効くため、その2つのときだけ見せる。
 function updateDriftRowVisibility(root, mode)
 {
-	const hidden = (mode !== 'random');
-	root.querySelectorAll('.drift-row, .flee-row').forEach((row) => row.classList.toggle('hidden', hidden));
+	root.querySelectorAll('.drift-row').forEach((row) => row.classList.toggle('hidden', mode !== 'random'));
+	root.querySelectorAll('.flee-row').forEach((row) => row.classList.toggle('hidden', mode !== 'random' && mode !== 'corners'));
 }
 
 
@@ -317,20 +354,9 @@ function wireLayer(root, index)
 		sendLayer(index, { cursorAvoid: event.target.checked });
 	});
 
-	for (const button of root.querySelectorAll('.display-mode button'))
-	{
-		button.addEventListener('click', () =>
-		{
-			updateSizeRowsVisibility(root, button.dataset.value);
-			updateDriftRowVisibility(root, button.dataset.value);
-			updateDisplayModeDesc(root, button.dataset.value);
-			updateSizeDesc(root, button.dataset.value);
-			sendLayer(index, { displayMode: button.dataset.value });
-		});
-	}
-
 	wireSlider(root, '.size-percent', '.size-percent-value', (v) => v + '%', (v) => v, index, 'sizePercent');
 	wireSlider(root, '.corner-percent', '.corner-percent-value', (v) => v + '%', (v) => v, index, 'cornerPercent');
+	wireSlider(root, '.corner-margin-percent', '.corner-margin-percent-value', (v) => v + '%', (v) => v, index, 'cornerMarginPercent');
 	wireSlider(root, '.shadow-x', '.shadow-x-value', (v) => v + 'px', (v) => v, index, 'shadowX');
 	wireSlider(root, '.shadow-y', '.shadow-y-value', (v) => v + 'px', (v) => v, index, 'shadowY');
 	wireSlider(root, '.shadow-blur', '.shadow-blur-value', (v) => v + 'px', (v) => v, index, 'shadowBlur');
@@ -387,6 +413,14 @@ function buildLayers(count)
 		section.querySelector('.layer-remove-title').classList.toggle('hidden', hideRemove);
 		section.querySelector('.layer-remove-card').classList.toggle('hidden', hideRemove);
 
+		const displayModeDropdown = setupDropdown(section.querySelector('.display-mode'), (value) =>
+		{
+			updateSizeRowsVisibility(section, value);
+			updateDriftRowVisibility(section, value);
+			updateDisplayModeDesc(section, value);
+			updateSizeDesc(section, value);
+			sendLayer(i, { displayMode: value });
+		});
 		const mediaKindDropdown = setupDropdown(section.querySelector('.media-kind'), (value) => sendLayer(i, { mediaKind: value }));
 		const driftDirectionDropdown = setupDropdown(section.querySelector('.drift-direction'), (value) => sendLayer(i, { driftDirection: value }));
 		const displayEffectDropdown = setupDropdown(section.querySelector('.display-effect'), (value) =>
@@ -396,9 +430,13 @@ function buildLayers(count)
 		});
 
 		wireLayer(section, i);
+
+		// このレイヤーの折りたたみ可能なカード (表示・エフェクト) に、ヘッダーでの開閉を結びつける。
+		section.querySelectorAll('.card.expander').forEach(setupExpander);
+
 		layerSections.appendChild(section);
 
-		layerUI.push({ root: section, mediaKindDropdown, driftDirectionDropdown, displayEffectDropdown });
+		layerUI.push({ root: section, displayModeDropdown, mediaKindDropdown, driftDirectionDropdown, displayEffectDropdown });
 	}
 }
 
@@ -425,13 +463,11 @@ function refreshLayer(index, layer)
 	ui.mediaKindDropdown.setValue(layer.mediaKind || 'both');
 	root.querySelector('.shuffle').checked = !!layer.shuffle;
 
-	for (const button of root.querySelectorAll('.display-mode button'))
-	{
-		button.classList.toggle('active', button.dataset.value === layer.displayMode);
-	}
+	ui.displayModeDropdown.setValue(layer.displayMode);
 
 	setSlider(root, '.size-percent', '.size-percent-value', layer.sizePercent, (v) => v + '%');
 	setSlider(root, '.corner-percent', '.corner-percent-value', layer.cornerPercent, (v) => v + '%');
+	setSlider(root, '.corner-margin-percent', '.corner-margin-percent-value', layer.cornerMarginPercent, (v) => v + '%');
 	ui.driftDirectionDropdown.setValue(layer.driftDirection || 'none');
 	root.querySelector('.cursor-avoid').checked = !!layer.cursorAvoid;
 	updateSizeRowsVisibility(root, layer.displayMode);
@@ -541,6 +577,21 @@ function wireEvents()
 		trailDurationValueEl.textContent = formatTrailDuration(Number(trailDurationEl.value));
 	});
 	trailDurationEl.addEventListener('change', () => send({ trailDuration: Number(trailDurationEl.value) }));
+
+	// 全体セクションの折りたたみ可能なカード (覗き穴) に、ヘッダーでの開閉を結びつける。
+	document.querySelectorAll('#section-global .card.expander').forEach(setupExpander);
+}
+
+
+
+
+// 受け取った OS のアクセント色を CSS 変数 --accent へ流し込む。Chromium の WebView は CSS の system-color (AccentColor) を固定色へ丸めるため、本体から実値を受け取って上書きする。色が無い (取得できない環境) ときは触らず既定色のままにする。
+function applyAccent(color)
+{
+	if (color)
+	{
+		document.documentElement.style.setProperty('--accent', color);
+	}
 }
 
 
@@ -552,6 +603,13 @@ async function init()
 	document.documentElement.lang = window.maegamiI18n.locale;
 	document.title = t('settings.windowTitle');
 	translateDom(document);
+
+	// プラットフォームごとのタイトルバー調整 (macOS の信号機ボタンぶんの余白など) を CSS へ効かせるためのクラスを付ける。
+	document.body.classList.add(window.maegamiSettings.platform === 'darwin' ? 'is-mac' : 'is-win');
+
+	// OS のアクセント色を取り込み、選択・オン状態の色を OS のアクセントへ追従させる。取得できない環境では CSS 既定のアクセント色のままにし、以後の OS 側の変更にも追従する。
+	applyAccent(await window.maegamiSettings.getAccent());
+	window.maegamiSettings.onAccentChange(applyAccent);
 
 	// 全体セクションの言語選択を組み立て、選択時にメインプロセスへ通知する。言語を変えるとメイン側が両ウィンドウを再読み込みして反映する。
 	languageDropdown = setupDropdown(document.querySelector('.dropdown.language'), (value) => send({ language: value }));

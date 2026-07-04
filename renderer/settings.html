@@ -23,6 +23,10 @@
 	<link rel="stylesheet" href="settings.css">
 </head>
 <body>
+	<div class="titlebar">
+		<img class="titlebar-icon" src="../assets/icon.ico" alt="" aria-hidden="true">
+		<div class="titlebar-title" data-i18n="settings.windowTitle">前紙 の設定</div>
+	</div>
 	<div class="layout">
 		<nav class="sidebar">
 			<div class="brand" data-i18n="app.name">前紙</div>
@@ -54,7 +58,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="card">
+				<div class="card expander">
 					<div class="row">
 						<div class="row-text">
 							<div class="row-title" data-i18n="global.cursorMask.title">マウスの周りを覗く</div>
@@ -65,8 +69,11 @@
 								<input type="checkbox" id="cursor-mask">
 								<span class="track"></span>
 							</label>
+							<span class="expander-chevron" aria-hidden="true"></span>
 						</div>
 					</div>
+					<div class="card-detail">
+						<div class="card-detail-inner">
 					<div class="sub-row hidden" id="mask-radius-row">
 						<div class="row-text">
 							<div class="row-title" data-i18n="global.maskRadius.title">覗き穴の半径</div>
@@ -97,6 +104,8 @@
 						<div class="row-control">
 							<input type="range" id="trail-duration" min="500" max="180000" step="250">
 							<span class="value" id="trail-duration-value">3.0秒</span>
+						</div>
+					</div>
 						</div>
 					</div>
 				</div>
@@ -193,20 +202,30 @@
 			</div>
 
 			<h2 class="group-title" data-i18n="group.display">表示</h2>
-			<div class="card">
+			<div class="card expander">
 				<div class="row">
 					<div class="row-text">
 						<div class="row-title" data-i18n="layer.displayMode.title">表示方法</div>
 						<div class="row-desc display-mode-desc" data-i18n="layer.displayMode.desc">画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置に置くか。</div>
 					</div>
 					<div class="row-control">
-						<div class="segmented display-mode">
-							<button data-value="cover" data-i18n="layer.displayMode.cover">画面を覆う</button>
-							<button data-value="contain" data-i18n="layer.displayMode.contain">画像を収める</button>
-							<button data-value="random" data-i18n="layer.displayMode.random">ランダム配置</button>
+						<div class="dropdown display-mode" data-value="contain">
+							<button type="button" class="dropdown-toggle">
+								<span class="dropdown-label" data-i18n="layer.displayMode.contain">画像を収める</span>
+								<span class="dropdown-caret" aria-hidden="true"></span>
+							</button>
+							<ul class="dropdown-menu" role="listbox">
+								<li class="dropdown-option" data-value="cover" role="option" data-i18n="layer.displayMode.cover">画面を覆う</li>
+								<li class="dropdown-option" data-value="contain" role="option" data-i18n="layer.displayMode.contain">画像を収める</li>
+								<li class="dropdown-option" data-value="random" role="option" data-i18n="layer.displayMode.random">ランダム配置</li>
+								<li class="dropdown-option" data-value="corners" role="option" data-i18n="layer.displayMode.corners">四隅</li>
+							</ul>
 						</div>
+						<span class="expander-chevron" aria-hidden="true"></span>
 					</div>
 				</div>
+				<div class="card-detail">
+					<div class="card-detail-inner">
 				<div class="sub-row size-row">
 					<div class="row-text">
 						<div class="row-title" data-i18n="layer.size.title">表示サイズ</div>
@@ -225,6 +244,16 @@
 					<div class="row-control">
 						<input type="range" class="corner-percent" min="0" max="5" step="0.2">
 						<span class="value corner-percent-value">0%</span>
+					</div>
+				</div>
+				<div class="sub-row corner-margin-row hidden">
+					<div class="row-text">
+						<div class="row-title" data-i18n="layer.cornerMargin.title">四隅の余白</div>
+						<div class="row-desc" data-i18n="layer.cornerMargin.desc">画像をデスクトップの端からどれだけ内側へ離すか。短辺を基準にし、縦横とも同じ余白になる。</div>
+					</div>
+					<div class="row-control">
+						<input type="range" class="corner-margin-percent" min="0" max="20" step="0.5">
+						<span class="value corner-margin-percent-value">0%</span>
 					</div>
 				</div>
 				<div class="sub-row drift-row hidden">
@@ -260,8 +289,10 @@
 						</label>
 					</div>
 				</div>
+					</div>
+				</div>
 			</div>
-			<div class="card">
+			<div class="card expander">
 				<div class="row">
 					<div class="row-text">
 						<div class="row-title" data-i18n="layer.effect.title">エフェクト</div>
@@ -278,8 +309,11 @@
 								<li class="dropdown-option" data-value="shadow" role="option" data-i18n="layer.effect.shadow">ドロップシャドウ</li>
 							</ul>
 						</div>
+						<span class="expander-chevron" aria-hidden="true"></span>
 					</div>
 				</div>
+				<div class="card-detail">
+					<div class="card-detail-inner">
 				<div class="sub-row shadow-row hidden">
 					<div class="row-text">
 						<div class="row-title" data-i18n="layer.shadowX.title">影の横ずらし</div>
@@ -318,6 +352,8 @@
 					<div class="row-control">
 						<input type="range" class="shadow-opacity" min="0" max="100" step="5">
 						<span class="value shadow-opacity-value">55%</span>
+					</div>
+				</div>
 					</div>
 				</div>
 			</div>

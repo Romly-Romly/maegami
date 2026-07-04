@@ -48,21 +48,27 @@
 	"layer.shuffle.desc": "Randomize the display order.",
 
 	"layer.displayMode.title": "Display mode",
-	"layer.displayMode.desc": "Cover the whole screen, fit the entire image, or place it at a random position.",
+	"layer.displayMode.desc": "Cover the whole screen, fit the entire image, or place it at a random position or in the corners.",
 	"layer.displayMode.desc.cover": "Stretches the image across the whole desktop to fill the screen. The aspect ratio is kept, and the overflowing edges are cropped.",
 	"layer.displayMode.desc.contain": "Shows the entire image centered, scaled to fit within the screen without cropping.",
 	"layer.displayMode.desc.random": "Places the image at a random position each time.",
+	"layer.displayMode.desc.corners": "Shows the image in one of the desktop's four corners. When avoiding the cursor, it moves clockwise to the next corner.",
 	"layer.displayMode.cover": "Cover screen",
 	"layer.displayMode.contain": "Fit image",
 	"layer.displayMode.random": "Random placement",
+	"layer.displayMode.corners": "Corners",
 
 	"layer.size.title": "Display size",
 	"layer.size.desc": "Image size relative to the desktop.",
 	"layer.size.desc.contain": "Fits the image to the screen, then shrinks it to this size.",
 	"layer.size.desc.random": "The image's area as a fraction of the desktop. At 100% it grows larger than the screen and may be cropped at the edges.",
+	"layer.size.desc.corners": "The image's area as a fraction of the desktop. At 100% it grows larger than the screen and may be cropped at the edges.",
 
 	"layer.corner.title": "Rounded corners",
 	"layer.corner.desc": "How much to round the image's corners. Based on the desktop's shorter edge, and automatically eased for images shown small.",
+
+	"layer.cornerMargin.title": "Corner margin",
+	"layer.cornerMargin.desc": "How far to inset the image from the desktop edges. Based on the shorter edge, with equal spacing horizontally and vertically.",
 
 	"layer.drift.title": "Slow drift",
 	"layer.drift.desc": "Add an effect that moves the image while it's shown.",

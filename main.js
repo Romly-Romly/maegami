@@ -17,10 +17,18 @@
 
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, dialog, screen, nativeImage, ipcMain, nativeTheme } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, screen, nativeImage, ipcMain, nativeTheme, systemPreferences } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const i18n = require('./i18n');
+
+// 実行中のプラットフォームの判別。タイトルバーの作り (Windows のキャプションボタンのオーバーレイ、macOS の信号機ボタンの内寄せ) と、地に敷くシステム背景の選び分けに使う。
+const isWin = process.platform === 'win32';
+const isMac = process.platform === 'darwin';
+
+// ウィンドウ地の Mica は Windows 11 (ビルド22000以上) だけが対応する。地を Mica にできるかの判定に使い、対応しない環境では不透明の地色へ退く。
+const micaCapable = isWin && (parseInt(os.release().split('.')[2], 10) || 0) >= 22000;
 
 // 設定ファイルは OS 標準のユーザーデータ領域に置く。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
@@ -33,6 +41,10 @@ const maxScanDepth = 3;
 
 // レイヤーは最大3枚まで増やせる。
 const maxLayers = 3;
+
+// 設定ウィンドウの既定の大きさと、縮められる最小の大きさ。保存値が無いときや、保存値を作業領域へ収めるクランプの下限に使う。
+const settingsWindowDefaultSize = { width: 880, height: 580 };
+const settingsWindowMinSize = { width: 640, height: 480 };
 
 // ウィンドウ全体に効く設定。不透明度はウィンドウ自体へ掛け、くり抜きはステージ全体のマスクとして働くため、レイヤーごとには持たせず一つだけ持つ。
 const globalDefaults = {
@@ -52,6 +64,7 @@ const layerDefaults = {
 	displayMode: 'contain',
 	sizePercent: 100,
 	cornerPercent: 0,
+	cornerMarginPercent: 0,
 	driftDirection: 'none',
 	cursorAvoid: false,
 	displayEffect: 'none',
@@ -69,7 +82,7 @@ const layerDefaults = {
 const globalDisplayKeys = ['opacity', 'cursorMask', 'maskRadius', 'cursorTrail', 'trailDuration'];
 
 // レイヤー設定のうち、再生中の一枚へその場で当てれば足りるキー。プレイリストの組み直しや再走査を伴わない大きさ・角丸・エフェクト・影がこれにあたる。
-const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'driftDirection', 'cursorAvoid', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
+const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'cornerMarginPercent', 'driftDirection', 'cursorAvoid', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
 
 let settings = { ...globalDefaults, layers: [{ ...layerDefaults }] };
 let win = null;
@@ -219,7 +232,15 @@ function normalizeSettings(parsed)
 		}
 	}
 
-	return { ...globalDefaults, ...global, layers };
+	const normalized = { ...globalDefaults, ...global, layers };
+
+	// 設定ウィンドウの大きさはオーバーレイの表示設定とは別系統だが、同じ settings.json へ保存して持ち回る。保存値の妥当性は復元時に検証するため、ここでは存在すればそのまま引き継ぐ。
+	if (parsed.settingsWindowSize !== undefined)
+	{
+		normalized.settingsWindowSize = parsed.settingsWindowSize;
+	}
+
+	return normalized;
 }
 
 
@@ -588,7 +609,7 @@ function applyLayer(index, patch)
 	settings.layers[index] = { ...settings.layers[index], ...patch };
 	saveSettings();
 
-	// 表示方法の変更でランダム配置になったり外れたりするため、カーソル追従の要否を見直す。
+	// 表示方法やカーソル避けの変更で追従の要否が変わるため (ランダム配置への切り替えや、四隅でのカーソル避けの入切など)、カーソル追従を見直す。
 	syncCursorTracking();
 
 	const keys = Object.keys(patch);
@@ -673,6 +694,71 @@ function pushSettingsState()
 
 
 
+// 設定ウィンドウを開くときの大きさと位置を決める。保存した大きさがあればそれを使い、無効なら既定の大きさへ戻す。いずれの場合もカーソルのあるディスプレイの作業領域へ収まるようクランプし、その中央へ置く。これにより保存値の破損やモニタ構成の変更があってもウィンドウが画面外へ消えない。
+function computeSettingsWindowBounds()
+{
+	const saved = settings.settingsWindowSize;
+	const hasValidSaved = saved
+		&& Number.isFinite(saved.width) && Number.isFinite(saved.height)
+		&& saved.width > 0 && saved.height > 0;
+
+	let width = hasValidSaved ? saved.width : settingsWindowDefaultSize.width;
+	let height = hasValidSaved ? saved.height : settingsWindowDefaultSize.height;
+
+	// カーソルのあるディスプレイへ出す。トレイを操作した画面に素直に現れ、かつその画面の作業領域でクランプできる。開くたびに取り直すため、モニタの抜き差しや解像度変更にも追従する。
+	const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+	const area = display.workArea;
+
+	// 作業領域に収め、最小の大きさは下回らせない。作業領域が最小より狭い極端な場合は、画面外へはみ出させないことを優先して作業領域の大きさに合わせる。
+	width = Math.min(Math.max(width, settingsWindowMinSize.width), area.width);
+	height = Math.min(Math.max(height, settingsWindowMinSize.height), area.height);
+
+	// 決めた大きさで作業領域の中央へ置く。
+	const x = Math.round(area.x + (area.width - width) / 2);
+	const y = Math.round(area.y + (area.height - height) / 2);
+
+	return { x, y, width, height };
+}
+
+
+
+
+// OS のアクセント色を #rrggbb で得る。systemPreferences.getAccentColor は RRGGBBAA の16進文字列を返すため、先頭6桁 (RGB) を取り末尾のアルファは落とす。Chromium の WebView は CSS の system-color (AccentColor) を固定色へ丸めるため、実際のアクセント色を本体側で読んで描画側へ渡す。取得できない環境では null を返し、描画側の既定色に委ねる。
+function getAccentColor()
+{
+	try
+	{
+		const raw = systemPreferences.getAccentColor();
+
+		if (!raw)
+		{
+			return null;
+		}
+
+		return '#' + raw.replace('#', '').slice(0, 6);
+	}
+	catch (err)
+	{
+		return null;
+	}
+}
+
+
+
+
+// Windows のカスタムタイトルバー (titleBarStyle: hidden) で OS が描くキャプションボタンの見た目を決める。地はウィンドウの Mica を透かすため透明にし、記号の色だけをテーマの明暗へ合わせる。高さは HTML 側のタイトルバー帯と揃える。
+function settingsTitleBarOverlay()
+{
+	return {
+		color: '#00000000',
+		symbolColor: nativeTheme.shouldUseDarkColors ? '#ffffff' : '#1a1a1a',
+		height: 40
+	};
+}
+
+
+
+
 function openSettings()
 {
 	if (settingsWin && !settingsWin.isDestroyed())
@@ -682,27 +768,71 @@ function openSettings()
 		return;
 	}
 
-	settingsWin = new BrowserWindow({
-		width: 880,
-		height: 580,
-		minWidth: 640,
-		minHeight: 480,
+	const bounds = computeSettingsWindowBounds();
+
+	const options = {
+		x: bounds.x,
+		y: bounds.y,
+		width: bounds.width,
+		height: bounds.height,
+		minWidth: settingsWindowMinSize.width,
+		minHeight: settingsWindowMinSize.height,
 		title: t('settings.windowTitle'),
 		// 同梱したアプリアイコンを明示する。ビルド資材ではなく同梱物の icon.ico を指すことで、開発実行でも配布版でも同じアイコンが出る。macOS は window の icon を使わず .ico も読めないため、Windows 等でのみ渡す。
 		...(process.platform !== 'darwin' ? { icon: path.join(__dirname, 'assets', 'icon.ico') } : {}),
 		autoHideMenuBar: true,
-		backgroundColor: nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3',
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
 			contextIsolation: true,
 			nodeIntegration: false
 		}
-	});
+	};
+
+	// Windows ではキャプションボタン (最小化・最大化・閉じる) だけを OS のオーバーレイに描かせ、タイトル文字とドラッグ帯は HTML 側に持つ。これで Windows 11 標準アプリと同じ、地の Mica が透けるタイトルバーになる。
+	if (isWin)
+	{
+		options.titleBarStyle = 'hidden';
+		options.titleBarOverlay = settingsTitleBarOverlay();
+	}
+	else if (isMac)
+	{
+		// macOS では信号機ボタンを枠内へ寄せて残し、タイトル帯は自前で持つ。地は下の Vibrancy を透かす。
+		options.titleBarStyle = 'hiddenInset';
+		options.vibrancy = 'under-window';
+	}
+
+	// Windows 11 では地をシステムの Mica にする。地色を透明にして Mica を透かし、カードだけを半透明で乗せる。Mica の無い環境では不透明の地色で塗り、地を透けさせない。
+	if (micaCapable)
+	{
+		options.backgroundMaterial = 'mica';
+		options.backgroundColor = '#00000000';
+	}
+	else if (isMac)
+	{
+		options.backgroundColor = '#00000000';
+	}
+	else
+	{
+		options.backgroundColor = nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3';
+	}
+
+	settingsWin = new BrowserWindow(options);
 
 	// オーバーレイ本体が screen-saver レベルで最前面にいるため、設定ウィンドウも同じレベルへ上げないと背後に隠れてしまう。
 	settingsWin.setAlwaysOnTop(true, 'screen-saver');
 
 	settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+
+	// 閉じる直前に通常状態の大きさを記録する。getNormalBounds は最大化・最小化・全画面を除いた寸法を返すため、それらの状態の寸法が保存値へ混入しない。位置は復元時に毎回中央へ取り直すため保存しない。
+	settingsWin.on('close', () =>
+	{
+		if (settingsWin && !settingsWin.isDestroyed())
+		{
+			const normal = settingsWin.getNormalBounds();
+			settings.settingsWindowSize = { width: normal.width, height: normal.height };
+			saveSettings();
+		}
+	});
 
 	settingsWin.on('closed', () =>
 	{
@@ -871,7 +1001,7 @@ function stopCursorTracking()
 
 
 
-// カーソル追従が要るかを判定する。くり抜きを出す設定か、いずれかのレイヤーがランダム配置のとき要る。ランダム配置は出現位置をカーソルからやんわり遠ざけるため、描画側でカーソル位置を必要とする。
+// カーソル追従が要るかを判定する。くり抜きを出す設定か、いずれかのレイヤーがランダム配置のとき、または四隅でカーソル避けが有効なとき要る。ランダム配置は出現位置をカーソルからやんわり遠ざけるため常に要り、四隅は出現位置がカーソルに依らないためカーソル避けが有効なときだけ要る。
 function cursorTrackingNeeded()
 {
 	if (settings.cursorMask)
@@ -879,7 +1009,9 @@ function cursorTrackingNeeded()
 		return true;
 	}
 
-	return settings.layers.some((layer) => layer.displayMode === 'random');
+	return settings.layers.some((layer) =>
+		layer.displayMode === 'random'
+		|| (layer.displayMode === 'corners' && layer.cursorAvoid));
 }
 
 
@@ -1147,6 +1279,9 @@ function main()
 	// 設定ウィンドウのバージョン表示のために、package.json の version を返す。
 	ipcMain.handle('app:get-version', () => app.getVersion());
 
+	// 設定ウィンドウのアクセント色として OS のアクセント色を返す。描画側はこれを CSS 変数 --accent へ入れ、選択・オン状態の色を OS の色へ追従させる。
+	ipcMain.handle('settings:get-accent', () => getAccentColor());
+
 	// 設定ウィンドウからの全体設定の変更を受け取り反映する。
 	ipcMain.on('settings:set', (event, patch) =>
 	{
@@ -1181,8 +1316,28 @@ function main()
 	createWindow();
 	buildTray();
 
-	// トレイメニューのアイコンはテーマの明暗で描き分けているため、システムのテーマ切替に合わせてトレイを作り直し、現在のテーマに合う素材へ差し替える。
-	nativeTheme.on('updated', () => buildTray());
+	// テーマの切替に合わせて、トレイのアイコン (明暗で描き分け) を作り直し、あわせて設定ウィンドウのキャプションボタンの記号色も現在のテーマへ合わせ直す。
+	nativeTheme.on('updated', () =>
+	{
+		buildTray();
+
+		if (isWin && settingsWin && !settingsWin.isDestroyed())
+		{
+			settingsWin.setTitleBarOverlay(settingsTitleBarOverlay());
+		}
+	});
+
+	// OS のアクセント色の変更に追従し、開いていれば設定ウィンドウへ新しい色を送る。accent-color-changed は Windows でのみ発火する。
+	if (isWin)
+	{
+		systemPreferences.on('accent-color-changed', () =>
+		{
+			if (settingsWin && !settingsWin.isDestroyed())
+			{
+				settingsWin.webContents.send('accent:changed', getAccentColor());
+			}
+		});
+	}
 
 	screen.on('display-metrics-changed', fitToPrimaryDisplay);
 	screen.on('display-added', fitToPrimaryDisplay);

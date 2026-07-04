@@ -74,15 +74,20 @@ const CURSOR_SMOOTH_TAU = 60;
 // ランダム配置でカーソルを避ける余裕 (px)。出現する画像の矩形がこの距離より内側にカーソルが入るほど候補を減点する。これより離れていれば減点はなく、配置のランダム性をそのまま保つ。
 const CURSOR_AVOID_MARGIN = 140;
 
-// カーソル回避 (flee) で逃げ出す距離 (px)。表示中の画像の矩形とカーソルの隔たりがこれより縮むと、カーソルから離れる向きへ滑って逃げる。
+// 四隅配置のカーソル回避で、次の隅へ移り始める距離 (px)。表示中の画像の矩形とカーソルの隔たりがこれより縮むと、時計回りで次の隅へ滑る。
 const FLEE_TRIGGER = 120;
 
-// カーソル回避で逃げ切る距離 (px)。逃げた後に画像の矩形とカーソルの間にこれだけ空ける。逃げ出す距離より大きくして、逃げた直後に再び逃げ出す条件へ入らないようにする (連続して動き続けるのを防ぐ)。
-const FLEE_CLEAR = 280;
+// ランダム配置のカーソル回避で保つ余白 (px)。
+// カーソルが画像の矩形へこの距離より近づくと、カーソルから離れる向きへ押し出してこの余白まで開け直す。カーソルが動くたびに現在地を起点に押し直すので、追われると余白を保ったまま逃げ続ける。
+const FLEE_MARGIN = 200;
 
-// カーソル回避で逃げる所要時間 (ミリ秒) と加減速。終端でやわらかく止まるカーブにして、すっと逃げて落ち着くようにする。
+// カーソル回避で隅から隅へ滑る所要時間 (ミリ秒) と加減速。終端でやわらかく止まるカーブにして、すっと移って落ち着くようにする。四隅配置の隅移動に使う。
 const FLEE_DURATION = 700;
 const FLEE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+// ランダム配置のカーソル回避で、押し直すたびに現在地から逃げ先へ滑る所要時間 (ミリ秒)。
+// カーソルの動きへ追従して連続的に逃げるため、四隅の隅移動より短くして遅れを抑える。加減速は隅移動と同じカーブを使う。
+const FLEE_FOLLOW_DURATION = 190;
 
 // ランダム配置のゆっくり移動の距離を、漂う軸方向の表示サイズに対する割合で決める。絵の大小に比例した控えめな移動になる。フェードに重ねて速く進む区間と、表示中にごくゆっくり進む区間で割合を分け、緩急を付ける。
 const DRIFT_FAST_FRACTION = 0.06;
@@ -517,6 +522,27 @@ function pickRandomPosition(self, width, height, stageW, stageH)
 
 
 
+// 四隅配置で、指定した隅へ矩形を寄せたときの left / top を返す。隅は左上を0として時計回りに 1=右上 2=右下 3=左下。margin は各隅をデスクトップの端から内側へ離す余白 (px)。画像が画面より大きいときは寄せた外側の端 (余白ぶん内側) が基準になり、内側がはみ出して切れる。
+function cornerPosition(index, width, height, stageW, stageH, margin)
+{
+	const left = (index === 1 || index === 2) ? (stageW - width - margin) : margin;
+	const top = (index === 2 || index === 3) ? (stageH - height - margin) : margin;
+	return { left, top };
+}
+
+
+
+
+// 四隅配置で、画像をデスクトップの端から離す余白 (px) を求める。角丸と同じく短辺を基準にした割合で扱うため、縦横とも同じ余白になる。
+function cornerMargin(config, stageW, stageH)
+{
+	const ratio = Math.min(Math.max(config.cornerMarginPercent || 0, 0), 20) / 100;
+	return Math.min(stageW, stageH) * ratio;
+}
+
+
+
+
 // 表示方法に応じてメディアの大きさと位置を決める。サイズ指定は実寸を測った上でデスクトップの面積に対する割合として扱う。
 function applyLayout(engine, el)
 {
@@ -582,6 +608,38 @@ function applyLayout(engine, el)
 
 		left = rx * (stageW - width);
 		top = ry * (stageH - height);
+	}
+	else if (config.displayMode === 'corners')
+	{
+		// 大きさはランダム配置と同じく、画像の面積をデスクトップ面積の指定割合にする。画面より大きくなれば隅に寄せた外側の端が切れる。
+		const scale = Math.sqrt(ratio * stageW * stageH / (natW * natH));
+		width = natW * scale;
+		height = natH * scale;
+
+		// 基準にする隅をひと組決めて要素へ覚えさせ、再レイアウトでも同じ隅を起点にする。
+		let corner0 = parseInt(el.dataset.corner0, 10);
+
+		if (!Number.isInteger(corner0))
+		{
+			corner0 = Math.floor(Math.random() * 4);
+			el.dataset.corner0 = corner0;
+			el._cornerIndex = corner0;
+		}
+
+		const margin = cornerMargin(config, stageW, stageH);
+		const base = cornerPosition(corner0, width, height, stageW, stageH, margin);
+		left = base.left;
+		top = base.top;
+
+		// カーソル避けの隅移動は基準の隅からの translate で滑らせる。ここでは今いる隅に合わせて差分を当て直し、滑らせずに即座に合わせる。新規配置や別の表示方法から切り替えた直後は差分が0になり、古いオフセットも消える。
+		const current = cornerPosition(el._cornerIndex || 0, width, height, stageW, stageH, margin);
+		const fleeX = current.left - left;
+		const fleeY = current.top - top;
+		el._fleeX = fleeX;
+		el._fleeY = fleeY;
+		el.style.setProperty('--flee-dur', '0ms');
+		el.style.setProperty('--flee-x', fleeX + 'px');
+		el.style.setProperty('--flee-y', fleeY + 'px');
 	}
 	else
 	{
@@ -742,18 +800,38 @@ function driftEase(joinSlope, decel)
 
 
 
-// カーソル回避の逃げ先のオフセット (配置位置からの translate 量) を決める。配置位置 (baseLeft/baseTop) を起点に、カーソルから矩形の中心へ向かう向きへ、矩形がカーソルから FLEE_CLEAR だけ空く位置まで中心を押し出す。逃げ先は配置のランダム性が許す範囲 (画面内、画像が画面より大きければ元の配置と同じはみ出し幅まで) に収める。押し出した先が壁に当たってまだカーソルに近い場合は、カーソルから遠い側の端へ寄せて壁沿いに逃がす。
-function fleeOffset(baseLeft, baseTop, width, height)
+// 壁に当たって逃げ切れないときに、壁沿いへ滑らせる片軸ぶんの左上座標を返す。カーソルからこの軸方向へ FLEE_MARGIN だけ離れた位置を、逃げ向き dir の符号に合わせて手前 (小さい座標側) か奥 (大きい座標側) から選ぶ。選んだ側が範囲 (minCoord〜maxCoord) に収まらなければ反対側にし、最後に範囲へ収める。size はその軸の表示サイズ。
+function slideAlongWall(cursorCoord, size, minCoord, maxCoord, dir)
+{
+	const before = cursorCoord - FLEE_MARGIN - size;
+	const after = cursorCoord + FLEE_MARGIN;
+	const preferAfter = dir >= 0;
+
+	let coord = preferAfter ? after : before;
+
+	if (coord < minCoord || coord > maxCoord)
+	{
+		coord = preferAfter ? before : after;
+	}
+
+	return Math.min(Math.max(coord, minCoord), maxCoord);
+}
+
+
+
+
+// カーソル回避の逃げ先のオフセット (配置位置からの translate 量) を決める。現在地 (配置位置 baseLeft/baseTop に今の逃げオフセット curOffsetX/curOffsetY を足した位置) の中心からカーソルへ向かう逆向きへ、矩形がカーソルから FLEE_MARGIN だけ空く位置まで中心を押し出す。現在地を起点にするので、追われるたびに同じ向きへ逃げ続けてカーソルを飛び越えない。逃げ先は配置のランダム性が許す範囲 (画面内、画像が画面より大きければ元の配置と同じはみ出し幅まで) に収める。押し出しが壁に阻まれてまだカーソルに近い場合は、詰まっていない軸へ沿って壁沿いに逃がし、両軸とも詰まる (角に追い詰められた) ときはカーソルから遠い側の隅へ寄せる。
+function fleeOffset(baseLeft, baseTop, curOffsetX, curOffsetY, width, height)
 {
 	const stageW = stage.clientWidth;
 	const stageH = stage.clientHeight;
 
-	const baseCenterX = baseLeft + width / 2;
-	const baseCenterY = baseTop + height / 2;
+	const curCenterX = baseLeft + curOffsetX + width / 2;
+	const curCenterY = baseTop + curOffsetY + height / 2;
 
-	// 配置位置を起点に、カーソルから中心へ向かう向きを単位ベクトルにする。中心がカーソルにほぼ重なるときは向きが定まらないため右向きを既定にする。
-	let dirX = baseCenterX - lastCursor.x;
-	let dirY = baseCenterY - lastCursor.y;
+	// 現在地の中心からカーソルへ向かう逆向き (カーソルから離れる向き) を単位ベクトルにする。中心がカーソルにほぼ重なるときは向きが定まらないため右向きを既定にする。
+	let dirX = curCenterX - lastCursor.x;
+	let dirY = curCenterY - lastCursor.y;
 	let len = Math.hypot(dirX, dirY);
 
 	if (len < 1)
@@ -766,8 +844,8 @@ function fleeOffset(baseLeft, baseTop, width, height)
 	dirX /= len;
 	dirY /= len;
 
-	// その向きに矩形を置いたときの中心から縁までの距離 (支持距離) に逃げ切る余裕を足したぶんだけ、カーソルから中心を離す。
-	const reach = Math.abs(dirX) * width / 2 + Math.abs(dirY) * height / 2 + FLEE_CLEAR;
+	// その向きに矩形を置いたときの中心から縁までの距離 (支持距離) に保ちたい余白を足したぶんだけ、カーソルから中心を離す。
+	const reach = Math.abs(dirX) * width / 2 + Math.abs(dirY) * height / 2 + FLEE_MARGIN;
 	const targetCenterX = lastCursor.x + dirX * reach;
 	const targetCenterY = lastCursor.y + dirY * reach;
 
@@ -777,14 +855,30 @@ function fleeOffset(baseLeft, baseTop, width, height)
 	const minTop = Math.min(0, stageH - height);
 	const maxTop = Math.max(0, stageH - height);
 
-	let left = Math.min(Math.max(targetCenterX - width / 2, minLeft), maxLeft);
-	let top = Math.min(Math.max(targetCenterY - height / 2, minTop), maxTop);
+	const desiredLeft = targetCenterX - width / 2;
+	const desiredTop = targetCenterY - height / 2;
+	let left = Math.min(Math.max(desiredLeft, minLeft), maxLeft);
+	let top = Math.min(Math.max(desiredTop, minTop), maxTop);
 
-	// 壁に当たって押し出しきれず、まだカーソルに近い場合は、カーソルから遠い側の端へ寄せて壁沿いに逃がす。
-	if (cursorPenalty({ left, top, width, height }, lastCursor, FLEE_TRIGGER) > 0)
+	// 壁に当たって押し出しきれず、まだカーソルに近い場合は、詰まっていない軸へ沿って壁沿いに逃がす。両軸とも壁で詰まっていればカーソルから遠い側の隅へ寄せる。
+	if (cursorPenalty({ left, top, width, height }, lastCursor, FLEE_MARGIN) > 0)
 	{
-		left = (lastCursor.x > stageW / 2) ? minLeft : maxLeft;
-		top = (lastCursor.y > stageH / 2) ? minTop : maxTop;
+		const blockedX = left !== desiredLeft;
+		const blockedY = top !== desiredTop;
+
+		if (blockedX && !blockedY)
+		{
+			top = slideAlongWall(lastCursor.y, height, minTop, maxTop, dirY);
+		}
+		else if (blockedY && !blockedX)
+		{
+			left = slideAlongWall(lastCursor.x, width, minLeft, maxLeft, dirX);
+		}
+		else
+		{
+			left = (lastCursor.x > stageW / 2) ? minLeft : maxLeft;
+			top = (lastCursor.y > stageH / 2) ? minTop : maxTop;
+		}
 	}
 
 	return { dx: left - baseLeft, dy: top - baseTop };
@@ -793,18 +887,18 @@ function fleeOffset(baseLeft, baseTop, width, height)
 
 
 
-// カーソル回避の逃げオフセットを当てる。ゆっくり移動 (--drift-*) とは別の軸・別の時間軸で動かすため、専用の --flee-x / --flee-y と所要時間・加減速を書き換え、CSS のトランジションで滑らせる。
-function fleeTo(el, prop, value)
+// カーソル回避の逃げオフセットを当てる。ゆっくり移動 (--drift-*) とは別の軸・別の時間軸で動かすため、専用の --flee-x / --flee-y と所要時間・加減速を書き換え、CSS のトランジションで滑らせる。所要時間と加減速は呼び出し側が表示方法に応じて渡す。
+function fleeTo(el, prop, value, durationMs, easing)
 {
-	el.style.setProperty('--flee-dur', FLEE_DURATION + 'ms');
-	el.style.setProperty('--flee-ease', FLEE_EASE);
+	el.style.setProperty('--flee-dur', durationMs + 'ms');
+	el.style.setProperty('--flee-ease', easing);
 	el.style.setProperty(prop, value + 'px');
 }
 
 
 
 
-// カーソル回避が有効なランダム配置のレイヤーについて、表示中の画像がカーソルへ近づきすぎたら逃がす。逃げ先のオフセットを覚えさせ (_fleeX / _fleeY)、--flee-x / --flee-y を書き換えて CSS のトランジションで滑らせる。ゆっくり移動とは独立した別オフセットなので、逃げる間も逃げた先でもゆっくり移動はそのまま継続する。逃げた後はオフセットを保ったまま動かさず、再びカーソルが近づいたときだけ次の逃げ先へ移る。カーソルを移すたびに呼ぶ。
+// カーソル回避が有効なレイヤーについて、表示中の画像がカーソルへ近づきすぎたら逃がす。逃げ先のオフセットを覚えさせ (_fleeX / _fleeY)、--flee-x / --flee-y を書き換えて CSS のトランジションで滑らせる。ゆっくり移動とは独立した別オフセットなので、逃げる間も逃げた先でもゆっくり移動はそのまま継続する。カーソルを移すたびに呼ぶ。ランダム配置は現在地を起点にカーソルから FLEE_MARGIN だけ離れる位置へ押し直し、カーソルが余白へ入り込むたびに押し直すことで追われると逃げ続ける。四隅はトリガー距離より近づくと時計回りで次の隅へ移る。
 function evaluateFlee()
 {
 	if (!lastCursor)
@@ -817,7 +911,14 @@ function evaluateFlee()
 		const config = engine.config;
 		const el = engine.currentElement;
 
-		if (!config || config.displayMode !== 'random' || !config.cursorAvoid || !el)
+		if (!config || !config.cursorAvoid || !el)
+		{
+			continue;
+		}
+
+		const mode = config.displayMode;
+
+		if (mode !== 'random' && mode !== 'corners')
 		{
 			continue;
 		}
@@ -837,23 +938,52 @@ function evaluateFlee()
 		const offsetY = el._fleeY || 0;
 		const rect = { left: baseLeft + offsetX, top: baseTop + offsetY, width, height };
 
-		// 今の位置でカーソルから十分離れていれば動かさない。逃げ出す距離より近づいて初めて逃げる。
-		if (cursorPenalty(rect, lastCursor, FLEE_TRIGGER) <= 0)
+		let dx;
+		let dy;
+		let durationMs;
+
+		if (mode === 'corners')
 		{
-			continue;
+			// トリガー距離より近づいて初めて隅を移る。離れていれば動かさない。
+			if (cursorPenalty(rect, lastCursor, FLEE_TRIGGER) <= 0)
+			{
+				continue;
+			}
+
+			// 時計回りで次の隅へ移る。基準の隅 (baseLeft / baseTop) からその隅までの差分を逃げオフセットにする。
+			const nextIndex = ((el._cornerIndex || 0) + 1) % 4;
+			el._cornerIndex = nextIndex;
+
+			const margin = cornerMargin(config, stage.clientWidth, stage.clientHeight);
+			const target = cornerPosition(nextIndex, width, height, stage.clientWidth, stage.clientHeight, margin);
+			dx = target.left - baseLeft;
+			dy = target.top - baseTop;
+			durationMs = FLEE_DURATION;
+		}
+		else
+		{
+			// 保ちたい余白より近ければ、現在地を起点に外向きへ押し出して余白を開け直す。離れていれば動かさない。
+			if (cursorPenalty(rect, lastCursor, FLEE_MARGIN) <= 0)
+			{
+				continue;
+			}
+
+			const target = fleeOffset(baseLeft, baseTop, offsetX, offsetY, width, height);
+			dx = target.dx;
+			dy = target.dy;
+			durationMs = FLEE_FOLLOW_DURATION;
 		}
 
-		const target = fleeOffset(baseLeft, baseTop, width, height);
-		el._fleeX = target.dx;
-		el._fleeY = target.dy;
-		fleeTo(el, '--flee-x', target.dx);
-		fleeTo(el, '--flee-y', target.dy);
+		el._fleeX = dx;
+		el._fleeY = dy;
+		fleeTo(el, '--flee-x', dx, durationMs, FLEE_EASE);
+		fleeTo(el, '--flee-y', dy, durationMs, FLEE_EASE);
 
 		// 切り離した影は画像と別要素なので、同じ逃げオフセットと時間軸を影へも書き込んで一緒に逃がす。
 		if (engine.shadowElement)
 		{
-			fleeTo(engine.shadowElement, '--flee-x', target.dx);
-			fleeTo(engine.shadowElement, '--flee-y', target.dy);
+			fleeTo(engine.shadowElement, '--flee-x', dx, durationMs, FLEE_EASE);
+			fleeTo(engine.shadowElement, '--flee-y', dy, durationMs, FLEE_EASE);
 		}
 	}
 }
@@ -1113,7 +1243,28 @@ function applyEngineDisplay(engine, config)
 	{
 		applyEffect(engine, engine.currentElement);
 		applyLayout(engine, engine.currentElement);
+		syncShadowBox(engine);
 	}
+}
+
+
+
+
+// 切り離した影の箱を、表示中の画像の配置・大きさへ合わせ直す。表示サイズなどの変更で画像を再レイアウトしても、別要素の影が古い寸法のまま取り残されないようにする。影のシルエットは画像のアルファをマスクとして箱いっぱいに引き伸ばして写すため、箱を画像と同じ大きさにすれば輪郭もそのまま追従する。ずらし量・ぼかし・濃さ・拡大率は今の漂いの時間軸で動き続け、次の一枚で新しい寸法を基準に組み直される。
+function syncShadowBox(engine)
+{
+	const image = engine.currentElement;
+	const shadow = engine.shadowElement;
+
+	if (!image || !shadow)
+	{
+		return;
+	}
+
+	shadow.style.left = image.style.left;
+	shadow.style.top = image.style.top;
+	shadow.style.width = image.style.width;
+	shadow.style.height = image.style.height;
 }
 
 

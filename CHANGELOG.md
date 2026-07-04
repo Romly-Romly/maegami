@@ -2,6 +2,24 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.5.0] - 2026-07-04🇺🇸
+
+### Added
+- Added a **Corners** display mode. The image appears in one of the desktop's four corners, and even with **Avoid cursor** on, it moves clockwise to the next corner to get out of your way.
+- The settings window now remembers its size and restores it the next time you open it.
+
+### Changed
+- Changed the display-mode selector from a row of buttons to a dropdown.
+- Improved cursor avoidance for **Random placement** so the image now pushes off from its current position. You can shoo an image aside by chasing it with the cursor, making it easier to move out of the way than before.
+- Refined the settings window to feel more native: selection and toggle-on colors now follow the system accent color, the title bar adopts the Windows 11 style, and the background uses Mica.
+
+### Fixed
+- Fixed a bug where a detached shadow could be left behind when the display size changed.
+
+- Other minor fixes.
+
+
+
 ## [1.4.5] - 2026-06-22
 
 - While paused, the overlay is now hidden so it no longer interferes with selecting a window for screenshots.

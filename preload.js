@@ -79,6 +79,12 @@ contextBridge.exposeInMainWorld('maegamiSettings', {
 	addLayer: () => ipcRenderer.send('settings:add-layer'),
 	removeLayer: (index) => ipcRenderer.send('settings:remove-layer', index),
 	chooseDirectory: (index) => ipcRenderer.invoke('settings:choose-directory', index),
+	platform: process.platform,
+	getAccent: () => ipcRenderer.invoke('settings:get-accent'),
+	onAccentChange: (callback) =>
+	{
+		ipcRenderer.on('accent:changed', (event, color) => callback(color));
+	},
 	onChange: (callback) =>
 	{
 		ipcRenderer.on('settings:changed', (event, updated) => callback(updated));

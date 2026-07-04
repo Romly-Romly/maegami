@@ -48,21 +48,27 @@
 	"layer.shuffle.desc": "表示順をランダムにする。",
 
 	"layer.displayMode.title": "表示方法",
-	"layer.displayMode.desc": "画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置に置くか。",
+	"layer.displayMode.desc": "画面いっぱいに覆うか、画像全体を収めるか、ランダムな位置や四隅に置くか。",
 	"layer.displayMode.desc.cover": "画像をデスクトップ全体に広げて画面を埋めます。縦横比を保ち、はみ出した部分は切り取られます。",
 	"layer.displayMode.desc.contain": "画像全体が切れないように、画面に収まる大きさで中央に表示します。",
 	"layer.displayMode.desc.random": "画像を毎回ランダムな位置に置きます。",
+	"layer.displayMode.desc.corners": "画像をデスクトップの四隅のいずれかに表示します。カーソルを避けるときは時計回りに次の隅へ移ります。",
 	"layer.displayMode.cover": "画面を覆う",
 	"layer.displayMode.contain": "画像を収める",
 	"layer.displayMode.random": "ランダム配置",
+	"layer.displayMode.corners": "四隅",
 
 	"layer.size.title": "表示サイズ",
 	"layer.size.desc": "デスクトップに対する画像の大きさ。",
 	"layer.size.desc.contain": "画面に収めたあと、このサイズに縮小します。",
 	"layer.size.desc.random": "画像の面積がデスクトップの面積に占める割合。100% では画面より大きくなり、端が切れることがあります。",
+	"layer.size.desc.corners": "画像の面積がデスクトップの面積に占める割合。100% では画面より大きくなり、端が切れることがあります。",
 
 	"layer.corner.title": "角丸",
 	"layer.corner.desc": "画像の四隅を丸める大きさ。デスクトップの短辺を基準にし、小さく表示された画像では自動で控えめになる。",
+
+	"layer.cornerMargin.title": "四隅の余白",
+	"layer.cornerMargin.desc": "画像をデスクトップの端からどれだけ内側へ離すか。短辺を基準にし、縦横とも同じ余白になる。",
 
 	"layer.drift.title": "ゆっくり移動",
 	"layer.drift.desc": "表示中に移動するようなエフェクトを加える。",
