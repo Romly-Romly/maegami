@@ -138,7 +138,8 @@ function makeEngine(container)
 		shadowElement: null,
 		timers: [],
 		signature: null,
-		running: false
+		running: false,
+		lastCornerIndex: null
 	};
 }
 
@@ -171,6 +172,12 @@ function removeCurrent(engine)
 {
 	if (engine.currentElement)
 	{
+		// 四隅配置で次の画像へ隅を引き継げるよう、消える前に今いた隅を控えておく。
+		if (Number.isInteger(engine.currentElement._cornerIndex))
+		{
+			engine.lastCornerIndex = engine.currentElement._cornerIndex;
+		}
+
 		engine.currentElement.remove();
 		engine.currentElement = null;
 	}
@@ -616,12 +623,12 @@ function applyLayout(engine, el)
 		width = natW * scale;
 		height = natH * scale;
 
-		// 基準にする隅をひと組決めて要素へ覚えさせ、再レイアウトでも同じ隅を起点にする。
+		// 基準にする隅をひと組決めて要素へ覚えさせ、再レイアウトでも同じ隅を起点にする。初回は前の画像が最後にいた隅を引き継ぎ、引き継ぐ隅が無い最初の一枚だけランダムに選ぶ。
 		let corner0 = parseInt(el.dataset.corner0, 10);
 
 		if (!Number.isInteger(corner0))
 		{
-			corner0 = Math.floor(Math.random() * 4);
+			corner0 = Number.isInteger(engine.lastCornerIndex) ? engine.lastCornerIndex : Math.floor(Math.random() * 4);
 			el.dataset.corner0 = corner0;
 			el._cornerIndex = corner0;
 		}

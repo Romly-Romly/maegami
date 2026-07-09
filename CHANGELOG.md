@@ -2,6 +2,12 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.5.1] - 2026-07-06
+
+### Changed
+- In the **Corners** display mode, the next image now carries over the corner where the previous image was.
+
+
 ## [1.5.0] - 2026-07-04🇺🇸
 
 ### Added
