@@ -22,6 +22,8 @@
 	"global.language.system": "Follow system",
 	"global.language.ja": "日本語",
 	"global.language.en": "English",
+	"general.openAtLogin.title": "Launch at login",
+	"general.openAtLogin.desc": "Start automatically when you sign in to {os}.",
 
 	"sidebar.addLayer": "＋ Add layer",
 

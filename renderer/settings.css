@@ -463,6 +463,12 @@ input[type="range"] {
 	transform: translateX(18px);
 }
 
+/* 無効なスイッチは淡くして、操作できないことを示す。 */
+.switch:has(input:disabled) {
+	cursor: default;
+	opacity: 0.4;
+}
+
 /* レイヤーを追加するサイドバーのボタン。レイヤー項目の下に置き、上限に達したら隠す。 */
 .add-layer {
 	appearance: none;

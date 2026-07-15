@@ -1257,6 +1257,31 @@ function advanceOverlay()
 
 
 
+// ログイン時起動の現在状態を返す。登録の実体は OS 側 (Windows はレジストリの Run キー、macOS はログイン項目) にあり、settings.json には持たない。開発実行 (未パッケージ) では登録先が electron.exe になってしまうため、対象外として扱う。
+function getLoginItemState()
+{
+	if (!app.isPackaged || (!isWin && !isMac))
+	{
+		return { supported: false, openAtLogin: false };
+	}
+
+	const state = app.getLoginItemSettings();
+
+	// Windows ではタスクマネージャーから無効化されると Run キーを残したまま起動しなくなるため、キーの有無ではなく実際に起動するかどうかを見る。
+	const openAtLogin = isWin ? state.executableWillLaunchAtLogin : state.openAtLogin;
+
+	return { supported: true, openAtLogin };
+}
+
+
+
+
+
+
+
+
+
+
 function main()
 {
 	loadSettings();
@@ -1312,6 +1337,18 @@ function main()
 
 	// 設定ウィンドウからのフォルダ選択要求に応える。どのレイヤーへ反映するかを受け取る。
 	ipcMain.handle('settings:choose-directory', (event, index) => chooseDirectory(typeof index === 'number' ? index : 0));
+
+	// 設定ウィンドウからのログイン時起動の状態取得・変更に応える。状態は OS 側が正のため、変更時も書き込み後に読み直した実状態を返し、表示をそれへ合わせさせる。
+	ipcMain.handle('settings:get-login-item', () => getLoginItemState());
+	ipcMain.handle('settings:set-login-item', (event, value) =>
+	{
+		if (typeof value === 'boolean' && getLoginItemState().supported)
+		{
+			app.setLoginItemSettings({ openAtLogin: value });
+		}
+
+		return getLoginItemState();
+	});
 
 	createWindow();
 	buildTray();

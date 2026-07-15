@@ -37,6 +37,7 @@ const cursorTrailEl = document.getElementById('cursor-trail');
 const trailDurationRowEl = document.getElementById('trail-duration-row');
 const trailDurationEl = document.getElementById('trail-duration');
 const trailDurationValueEl = document.getElementById('trail-duration-value');
+const openAtLoginEl = document.getElementById('open-at-login');
 
 // preload から渡された翻訳関数。キーを現在の言語の文言へ変換する。
 const t = window.maegamiI18n.t;
@@ -533,6 +534,16 @@ function renderState(s)
 
 
 
+// ログイン時起動の状態をトグルへ反映する。状態は settings.json ではなく OS 側が持つため、renderState とは別にここで書き込む。登録を扱えない環境 (開発実行など) ではトグルを無効のままにする。
+function applyLoginItem(state)
+{
+	openAtLoginEl.checked = !!(state && state.openAtLogin);
+	openAtLoginEl.disabled = !(state && state.supported);
+}
+
+
+
+
 // 全体設定のコントロールと、サイドバーの切り替え・レイヤー追加へ操作ハンドラを結びつける。レイヤーの項目は作り直されるため、サイドバーへの委譲で受ける。
 function wireEvents()
 {
@@ -578,6 +589,12 @@ function wireEvents()
 	});
 	trailDurationEl.addEventListener('change', () => send({ trailDuration: Number(trailDurationEl.value) }));
 
+	openAtLoginEl.addEventListener('change', async () =>
+	{
+		// 書き込み後に読み直された実状態が返るため、表示をそれへ合わせる。
+		applyLoginItem(await window.maegamiSettings.setLoginItem(openAtLoginEl.checked));
+	});
+
 	// 全体セクションの折りたたみ可能なカード (覗き穴) に、ヘッダーでの開閉を結びつける。
 	document.querySelectorAll('#section-global .card.expander').forEach(setupExpander);
 }
@@ -607,6 +624,10 @@ async function init()
 	// プラットフォームごとのタイトルバー調整 (macOS の信号機ボタンぶんの余白など) を CSS へ効かせるためのクラスを付ける。
 	document.body.classList.add(window.maegamiSettings.platform === 'darwin' ? 'is-mac' : 'is-win');
 
+	// ログイン時起動の説明文には実行中の OS 名を差し込むため、data-i18n ではなくここで訳を流し込む。
+	const osName = window.maegamiSettings.platform === 'darwin' ? 'macOS' : 'Windows';
+	document.getElementById('open-at-login-desc').textContent = t('general.openAtLogin.desc', { os: osName });
+
 	// OS のアクセント色を取り込み、選択・オン状態の色を OS のアクセントへ追従させる。取得できない環境では CSS 既定のアクセント色のままにし、以後の OS 側の変更にも追従する。
 	applyAccent(await window.maegamiSettings.getAccent());
 	window.maegamiSettings.onAccentChange(applyAccent);
@@ -617,6 +638,9 @@ async function init()
 	const s = await window.maegamiSettings.get();
 	renderState(s);
 	wireEvents();
+
+	// ログイン時起動の現在状態を OS 側から取り寄せて反映する。
+	applyLoginItem(await window.maegamiSettings.getLoginItem());
 
 	// サイドバー末尾の版数表示を本体から取り寄せて埋める。
 	const version = await window.maegamiSettings.getVersion();

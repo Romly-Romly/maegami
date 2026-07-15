@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('maegami', {
 	}
 });
 
-// 設定ウィンドウへは現在値とアプリ版数の取得・全体設定とレイヤー設定の変更・レイヤーの追加削除・フォルダ選択・変更通知の購読を公開する。
+// 設定ウィンドウへは現在値とアプリ版数の取得・全体設定とレイヤー設定の変更・レイヤーの追加削除・フォルダ選択・ログイン時起動の取得と変更・変更通知の購読を公開する。
 contextBridge.exposeInMainWorld('maegamiSettings', {
 	get: () => ipcRenderer.invoke('settings:get'),
 	getVersion: () => ipcRenderer.invoke('app:get-version'),
@@ -79,6 +79,8 @@ contextBridge.exposeInMainWorld('maegamiSettings', {
 	addLayer: () => ipcRenderer.send('settings:add-layer'),
 	removeLayer: (index) => ipcRenderer.send('settings:remove-layer', index),
 	chooseDirectory: (index) => ipcRenderer.invoke('settings:choose-directory', index),
+	getLoginItem: () => ipcRenderer.invoke('settings:get-login-item'),
+	setLoginItem: (value) => ipcRenderer.invoke('settings:set-login-item', value),
 	platform: process.platform,
 	getAccent: () => ipcRenderer.invoke('settings:get-accent'),
 	onAccentChange: (callback) =>

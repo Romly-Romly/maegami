@@ -22,6 +22,8 @@
 	"global.language.system": "システムに従う",
 	"global.language.ja": "日本語",
 	"global.language.en": "English",
+	"general.openAtLogin.title": "ログイン時に起動",
+	"general.openAtLogin.desc": "{os} へのログイン時に自動で起動します。",
 
 	"sidebar.addLayer": "＋ レイヤーを追加",
 

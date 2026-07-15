@@ -2,6 +2,15 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.5.2] - 2026-07-16
+
+### Added
+- You can now set the app to launch automatically at login.
+
+- Other minor fixes.
+
+
+
 ## [1.5.1] - 2026-07-06
 
 ### Changed
