@@ -17,11 +17,14 @@
 
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, dialog, screen, nativeImage, ipcMain, nativeTheme, systemPreferences } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, screen, nativeImage, ipcMain, nativeTheme, systemPreferences, clipboard, shell } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const i18n = require('./i18n');
+
+// 動画レイヤーの音声はトレイメニューから鳴らせる。トレイのクリックは描画プロセスの操作ジェスチャーにはならず、Chromium の既定では音付き再生が抑止されるため、音声を出せるよう自動再生の制限を外す。
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // 実行中のプラットフォームの判別。タイトルバーの作り (Windows のキャプションボタンのオーバーレイ、macOS の信号機ボタンの内寄せ) と、地に敷くシステム背景の選び分けに使う。
 const isWin = process.platform === 'win32';
@@ -32,6 +35,9 @@ const micaCapable = isWin && (parseInt(os.release().split('.')[2], 10) || 0) >= 
 
 // 設定ファイルは OS 標準のユーザーデータ領域に置く。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+
+// 表示履歴も OS 標準のユーザーデータ領域に置く。表示のたびに更新され設定とは書き込みの頻度が違うため、settings.json とはファイルを分ける。
+const historyPath = path.join(app.getPath('userData'), 'history.json');
 
 const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.avif'];
 const videoExtensions = ['.mp4', '.webm', '.ogv', '.mov', '.m4v'];
@@ -45,6 +51,13 @@ const maxLayers = 3;
 // 設定ウィンドウの既定の大きさと、縮められる最小の大きさ。保存値が無いときや、保存値を作業領域へ収めるクランプの下限に使う。
 const settingsWindowDefaultSize = { width: 880, height: 580 };
 const settingsWindowMinSize = { width: 640, height: 480 };
+
+// 履歴ウィンドウの既定の大きさと、縮められる最小の大きさ。
+const historyWindowDefaultSize = { width: 760, height: 620 };
+const historyWindowMinSize = { width: 380, height: 320 };
+
+// 表示履歴として保持する件数の上限。超えた分は古いものから捨てる。
+const historyLimit = 200;
 
 // ウィンドウ全体に効く設定。不透明度はウィンドウ自体へ掛け、くり抜きはステージ全体のマスクとして働くため、レイヤーごとには持たせず一つだけ持つ。
 const globalDefaults = {
@@ -75,19 +88,31 @@ const layerDefaults = {
 	displayDuration: 8000,
 	fadeDuration: 1500,
 	gapDuration: 600,
-	videoPlayFull: false
+	videoPlayFull: false,
+	// 動画レイヤーごとの音量。トレイメニューで音声を鳴らしたときの大きさをレイヤー単位で持つ。0〜100 の百分率。
+	volume: 100
 };
 
 // 全体設定のうち、再生を止めずに描画側へその場で当てられるキー。不透明度はウィンドウの透明度更新だけで足りる。
 const globalDisplayKeys = ['opacity', 'cursorMask', 'maskRadius', 'cursorTrail', 'trailDuration'];
 
-// レイヤー設定のうち、再生中の一枚へその場で当てれば足りるキー。プレイリストの組み直しや再走査を伴わない大きさ・角丸・エフェクト・影がこれにあたる。
-const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'cornerMarginPercent', 'driftDirection', 'cursorAvoid', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity'];
+// レイヤー設定のうち、再生中の一枚へその場で当てれば足りるキー。プレイリストの組み直しや再走査を伴わない大きさ・角丸・エフェクト・影・音量・音声の入切がこれにあたる。
+const layerDisplayKeys = ['displayMode', 'sizePercent', 'cornerPercent', 'cornerMarginPercent', 'driftDirection', 'cursorAvoid', 'displayEffect', 'shadowX', 'shadowY', 'shadowBlur', 'shadowOpacity', 'volume', 'audioOn'];
 
 let settings = { ...globalDefaults, layers: [{ ...layerDefaults }] };
 let win = null;
 let tray = null;
 let settingsWin = null;
+let historyWin = null;
+
+// 表示履歴。新しいものが先頭。オーバーレイからの「実際に表示した」報告を受けて積み、history.json として保存する。
+let history = [];
+
+// 履歴保存のデバウンスのタイマー識別子。表示のたびにディスクへ書き込まず、少し待ってからまとめて書く。
+let historySaveTimer = null;
+
+// 補助ウィンドウ (設定・履歴) のうち、最後にフォーカスを得たもの。両方開いているとき、最前面維持でどちらを押し上げるかを決めるのに使う。
+let lastAuxWin = null;
 
 // 現在表示に使っている言語と、その辞書。言語設定や OS ロケールから configureLocale で決める。描画プロセスへは preload からの同期要求でこの辞書を渡す。
 let currentLocale = i18n.fallbackLocale;
@@ -206,6 +231,9 @@ function loadSettings()
 
 	// 一時停止は永続化しない実行時状態。保存値が紛れていても無視し、起動のたびに再生状態から始める。
 	settings.paused = false;
+
+	// 動画の音声の入切もレイヤーごとの実行時状態。保存値が紛れていても無視し、起動のたびに全レイヤーをミュートから始める。
+	settings.layers.forEach((layer) => { layer.audioOn = false; });
 }
 
 
@@ -234,10 +262,15 @@ function normalizeSettings(parsed)
 
 	const normalized = { ...globalDefaults, ...global, layers };
 
-	// 設定ウィンドウの大きさはオーバーレイの表示設定とは別系統だが、同じ settings.json へ保存して持ち回る。保存値の妥当性は復元時に検証するため、ここでは存在すればそのまま引き継ぐ。
+	// 設定・履歴ウィンドウの大きさはオーバーレイの表示設定とは別系統だが、同じ settings.json へ保存して持ち回る。保存値の妥当性は復元時に検証するため、ここでは存在すればそのまま引き継ぐ。
 	if (parsed.settingsWindowSize !== undefined)
 	{
 		normalized.settingsWindowSize = parsed.settingsWindowSize;
+	}
+
+	if (parsed.historyWindowSize !== undefined)
+	{
+		normalized.historyWindowSize = parsed.historyWindowSize;
 	}
 
 	return normalized;
@@ -260,11 +293,126 @@ function saveSettings()
 		const persist = { ...settings };
 		delete persist.paused;
 
+		// 音声の入切もレイヤーごとの実行時状態のため保存対象から外し、次回起動時は常にミュートから始める。音量は永続化するため、レイヤーを複製して audioOn だけを落とす。
+		persist.layers = settings.layers.map((layer) =>
+		{
+			const copy = { ...layer };
+			delete copy.audioOn;
+			return copy;
+		});
+
 		fs.writeFileSync(settingsPath, JSON.stringify(persist, null, '\t'), 'utf8');
 	}
 	catch (err)
 	{
 		console.error('設定の保存に失敗しました:', err);
+	}
+}
+
+
+
+
+// 履歴の1件として扱える形かを検める。読み込んだファイルの壊れた項目と、描画プロセスから届いた不正な報告の両方をここで弾く。実寸はギャラリーの敷き詰めの高さ予約に必須のため、正の数値でないものは受け付けない。
+function isValidHistoryEntry(entry)
+{
+	return !!entry
+		&& (entry.type === 'image' || entry.type === 'video')
+		&& typeof entry.path === 'string' && entry.path.length > 0
+		&& typeof entry.url === 'string' && entry.url.length > 0
+		&& Number.isFinite(entry.width) && entry.width > 0
+		&& Number.isFinite(entry.height) && entry.height > 0;
+}
+
+
+
+
+// 保存済みの表示履歴を読み込む。壊れた項目は捨て、上限までに切り詰める。初回起動などでファイルが無い場合は空のまま進める。
+function loadHistory()
+{
+	try
+	{
+		const raw = fs.readFileSync(historyPath, 'utf8');
+		const parsed = JSON.parse(raw);
+
+		if (Array.isArray(parsed))
+		{
+			history = parsed.filter((entry) => isValidHistoryEntry(entry) && Number.isFinite(entry.shownAt)).slice(0, historyLimit);
+		}
+	}
+	catch (err)
+	{
+		history = [];
+	}
+}
+
+
+
+
+function saveHistory()
+{
+	if (historySaveTimer)
+	{
+		clearTimeout(historySaveTimer);
+		historySaveTimer = null;
+	}
+
+	try
+	{
+		fs.writeFileSync(historyPath, JSON.stringify(history, null, '\t'), 'utf8');
+	}
+	catch (err)
+	{
+		console.error('履歴の保存に失敗しました:', err);
+	}
+}
+
+
+
+
+// 履歴の保存を少し遅らせて予約する。複数レイヤーの切り替えが続けて届いてもまとめて一度で書けるようにする。
+function scheduleHistorySave()
+{
+	if (historySaveTimer)
+	{
+		return;
+	}
+
+	historySaveTimer = setTimeout(saveHistory, 5000);
+}
+
+
+
+
+// オーバーレイからの「実際に表示した」報告を履歴の先頭へ積む。同じメディアが繰り返し表示されたら、表示した記録としてその通り繰り返し積む。上限を超えた分は古いものから捨て、履歴ウィンドウが開いていれば新しい1件をその場で知らせる。
+function appendHistory(entry)
+{
+	if (!isValidHistoryEntry(entry))
+	{
+		return;
+	}
+
+	// 描画プロセスから届いた値は必要なキーだけを写し、余計なキーを持ち込ませない。表示時刻はここで刻む。
+	const record = {
+		type: entry.type,
+		path: entry.path,
+		url: entry.url,
+		width: Math.round(entry.width),
+		height: Math.round(entry.height),
+		shownAt: Date.now()
+	};
+
+	history.unshift(record);
+
+	if (history.length > historyLimit)
+	{
+		history.length = historyLimit;
+	}
+
+	scheduleHistorySave();
+
+	if (historyWin && !historyWin.isDestroyed())
+	{
+		historyWin.webContents.send('history:appended', record);
 	}
 }
 
@@ -287,7 +435,7 @@ function configureLocale()
 
 
 
-// オーバーレイと設定ウィンドウの両方を再読み込みする。言語の切り替えを描画プロセスへ反映するために使う。再読み込み時に preload が新しい辞書を取り直す。
+// オーバーレイと設定・履歴ウィンドウの全てを再読み込みする。言語の切り替えを描画プロセスへ反映するために使う。再読み込み時に preload が新しい辞書を取り直す。
 function reloadWindows()
 {
 	if (win && !win.isDestroyed())
@@ -298,6 +446,11 @@ function reloadWindows()
 	if (settingsWin && !settingsWin.isDestroyed())
 	{
 		settingsWin.webContents.reload();
+	}
+
+	if (historyWin && !historyWin.isDestroyed())
+	{
+		historyWin.webContents.reload();
 	}
 }
 
@@ -348,13 +501,14 @@ function scanMedia(dir, depth = 1)
 
 		const ext = path.extname(entry.name).toLowerCase();
 
+		// path は表示用の url とは別に生のパスのまま持たせる。表示履歴の報告を経て、パスのコピーやフォルダ表示に使う。
 		if (imageExtensions.includes(ext))
 		{
-			result.push({ type: 'image', url: pathToFileUrl(full) });
+			result.push({ type: 'image', url: pathToFileUrl(full), path: full });
 		}
 		else if (videoExtensions.includes(ext))
 		{
-			result.push({ type: 'video', url: pathToFileUrl(full) });
+			result.push({ type: 'video', url: pathToFileUrl(full), path: full });
 		}
 	}
 
@@ -694,24 +848,23 @@ function pushSettingsState()
 
 
 
-// 設定ウィンドウを開くときの大きさと位置を決める。保存した大きさがあればそれを使い、無効なら既定の大きさへ戻す。いずれの場合もカーソルのあるディスプレイの作業領域へ収まるようクランプし、その中央へ置く。これにより保存値の破損やモニタ構成の変更があってもウィンドウが画面外へ消えない。
-function computeSettingsWindowBounds()
+// 補助ウィンドウ (設定・履歴) を開くときの大きさと位置を決める。保存した大きさがあればそれを使い、無効なら既定の大きさへ戻す。いずれの場合もカーソルのあるディスプレイの作業領域へ収まるようクランプし、その中央へ置く。これにより保存値の破損やモニタ構成の変更があってもウィンドウが画面外へ消えない。
+function computeWindowBounds(saved, defaultSize, minSize)
 {
-	const saved = settings.settingsWindowSize;
 	const hasValidSaved = saved
 		&& Number.isFinite(saved.width) && Number.isFinite(saved.height)
 		&& saved.width > 0 && saved.height > 0;
 
-	let width = hasValidSaved ? saved.width : settingsWindowDefaultSize.width;
-	let height = hasValidSaved ? saved.height : settingsWindowDefaultSize.height;
+	let width = hasValidSaved ? saved.width : defaultSize.width;
+	let height = hasValidSaved ? saved.height : defaultSize.height;
 
 	// カーソルのあるディスプレイへ出す。トレイを操作した画面に素直に現れ、かつその画面の作業領域でクランプできる。開くたびに取り直すため、モニタの抜き差しや解像度変更にも追従する。
 	const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 	const area = display.workArea;
 
 	// 作業領域に収め、最小の大きさは下回らせない。作業領域が最小より狭い極端な場合は、画面外へはみ出させないことを優先して作業領域の大きさに合わせる。
-	width = Math.min(Math.max(width, settingsWindowMinSize.width), area.width);
-	height = Math.min(Math.max(height, settingsWindowMinSize.height), area.height);
+	width = Math.min(Math.max(width, minSize.width), area.width);
+	height = Math.min(Math.max(height, minSize.height), area.height);
 
 	// 決めた大きさで作業領域の中央へ置く。
 	const x = Math.round(area.x + (area.width - width) / 2);
@@ -746,8 +899,8 @@ function getAccentColor()
 
 
 
-// Windows のカスタムタイトルバー (titleBarStyle: hidden) で OS が描くキャプションボタンの見た目を決める。地はウィンドウの Mica を透かすため透明にし、記号の色だけをテーマの明暗へ合わせる。高さは HTML 側のタイトルバー帯と揃える。
-function settingsTitleBarOverlay()
+// Windows のカスタムタイトルバー (titleBarStyle: hidden) で OS が描くキャプションボタンの見た目を決める。設定・履歴ウィンドウで共通。地はウィンドウの Mica を透かすため透明にし、記号の色だけをテーマの明暗へ合わせる。高さは HTML 側のタイトルバー帯と揃える。
+function auxTitleBarOverlay()
 {
 	return {
 		color: '#00000000',
@@ -759,25 +912,17 @@ function settingsTitleBarOverlay()
 
 
 
-function openSettings()
+// 設定・履歴ウィンドウ共通の BrowserWindow オプションを組み立てる。タイトルバーの作りと地 (Mica / Vibrancy) を両ウィンドウでそろえる。
+function auxWindowOptions(bounds, minSize, title)
 {
-	if (settingsWin && !settingsWin.isDestroyed())
-	{
-		settingsWin.show();
-		settingsWin.focus();
-		return;
-	}
-
-	const bounds = computeSettingsWindowBounds();
-
 	const options = {
 		x: bounds.x,
 		y: bounds.y,
 		width: bounds.width,
 		height: bounds.height,
-		minWidth: settingsWindowMinSize.width,
-		minHeight: settingsWindowMinSize.height,
-		title: t('settings.windowTitle'),
+		minWidth: minSize.width,
+		minHeight: minSize.height,
+		title,
 		// 同梱したアプリアイコンを明示する。ビルド資材ではなく同梱物の icon.ico を指すことで、開発実行でも配布版でも同じアイコンが出る。macOS は window の icon を使わず .ico も読めないため、Windows 等でのみ渡す。
 		...(process.platform !== 'darwin' ? { icon: path.join(__dirname, 'assets', 'icon.ico') } : {}),
 		autoHideMenuBar: true,
@@ -792,7 +937,7 @@ function openSettings()
 	if (isWin)
 	{
 		options.titleBarStyle = 'hidden';
-		options.titleBarOverlay = settingsTitleBarOverlay();
+		options.titleBarOverlay = auxTitleBarOverlay();
 	}
 	else if (isMac)
 	{
@@ -816,12 +961,34 @@ function openSettings()
 		options.backgroundColor = nativeTheme.shouldUseDarkColors ? '#202020' : '#f3f3f3';
 	}
 
-	settingsWin = new BrowserWindow(options);
+	return options;
+}
+
+
+
+
+function openSettings()
+{
+	if (settingsWin && !settingsWin.isDestroyed())
+	{
+		settingsWin.show();
+		settingsWin.focus();
+		return;
+	}
+
+	const bounds = computeWindowBounds(settings.settingsWindowSize, settingsWindowDefaultSize, settingsWindowMinSize);
+	settingsWin = new BrowserWindow(auxWindowOptions(bounds, settingsWindowMinSize, t('settings.windowTitle')));
 
 	// オーバーレイ本体が screen-saver レベルで最前面にいるため、設定ウィンドウも同じレベルへ上げないと背後に隠れてしまう。
 	settingsWin.setAlwaysOnTop(true, 'screen-saver');
 
 	settingsWin.loadFile(path.join(__dirname, 'renderer', 'settings.html'));
+
+	// 最前面維持は補助ウィンドウのうち最後にフォーカスを得たものを押し上げるため、フォーカスを得たことを控える。
+	settingsWin.on('focus', () =>
+	{
+		lastAuxWin = settingsWin;
+	});
 
 	// 閉じる直前に通常状態の大きさを記録する。getNormalBounds は最大化・最小化・全画面を除いた寸法を返すため、それらの状態の寸法が保存値へ混入しない。位置は復元時に毎回中央へ取り直すため保存しない。
 	settingsWin.on('close', () =>
@@ -838,6 +1005,74 @@ function openSettings()
 	{
 		settingsWin = null;
 	});
+}
+
+
+
+
+// 表示履歴のギャラリーウィンドウを開く。既に開いていれば前面へ出すだけにする。
+function openHistory()
+{
+	if (historyWin && !historyWin.isDestroyed())
+	{
+		historyWin.show();
+		historyWin.focus();
+		return;
+	}
+
+	const bounds = computeWindowBounds(settings.historyWindowSize, historyWindowDefaultSize, historyWindowMinSize);
+	historyWin = new BrowserWindow(auxWindowOptions(bounds, historyWindowMinSize, t('history.windowTitle')));
+
+	// オーバーレイ本体が screen-saver レベルで最前面にいるため、履歴ウィンドウも同じレベルへ上げないと背後に隠れてしまう。
+	historyWin.setAlwaysOnTop(true, 'screen-saver');
+
+	historyWin.loadFile(path.join(__dirname, 'renderer', 'history.html'));
+
+	// 最前面維持は補助ウィンドウのうち最後にフォーカスを得たものを押し上げるため、フォーカスを得たことを控える。
+	historyWin.on('focus', () =>
+	{
+		lastAuxWin = historyWin;
+	});
+
+	// 閉じる直前に通常状態の大きさを記録する。getNormalBounds は最大化・最小化・全画面を除いた寸法を返すため、それらの状態の寸法が保存値へ混入しない。位置は復元時に毎回中央へ取り直すため保存しない。
+	historyWin.on('close', () =>
+	{
+		if (historyWin && !historyWin.isDestroyed())
+		{
+			const normal = historyWin.getNormalBounds();
+			settings.historyWindowSize = { width: normal.width, height: normal.height };
+			saveSettings();
+		}
+	});
+
+	historyWin.on('closed', () =>
+	{
+		historyWin = null;
+	});
+}
+
+
+
+
+// 履歴ウィンドウのタイルの右クリックメニューを出す。対象は履歴に実在するパスに限り、描画プロセスから届いた任意のパスをそのまま扱わない。フォルダ表示の文言は OS のファイルマネージャ名 (エクスプローラー / Finder) に合わせる。
+function showHistoryMenu(itemPath)
+{
+	if (!historyWin || historyWin.isDestroyed())
+	{
+		return;
+	}
+
+	if (!history.some((entry) => entry.path === itemPath))
+	{
+		return;
+	}
+
+	const menu = Menu.buildFromTemplate([
+		{ label: t('history.menu.copyPath'), click: () => clipboard.writeText(itemPath) },
+		{ label: t(isMac ? 'history.menu.revealInFinder' : 'history.menu.showInFolder'), click: () => shell.showItemInFolder(itemPath) }
+	]);
+
+	menu.popup({ window: historyWin });
 }
 
 
@@ -870,6 +1105,22 @@ function fitToPrimaryDisplay()
 
 
 
+// 最前面維持で押し上げる補助ウィンドウ (設定・履歴) を返す。開いているものが無ければ null。両方開いているときは最後にフォーカスを得た方を選び、毎回両方を押し上げて重なりの前後が入れ替わり続けるのを避ける。
+function frontAuxWindow()
+{
+	const open = [settingsWin, historyWin].filter((w) => w && !w.isDestroyed());
+
+	if (open.length === 0)
+	{
+		return null;
+	}
+
+	return open.includes(lastAuxWin) ? lastAuxWin : open[0];
+}
+
+
+
+
 // 一定間隔でオーバーレイを Z オーダーの最上位へ押し上げ続ける。Windows では setAlwaysOnTop だけでは他の最前面ウィンドウがアクティブ化された際に背後へ回り込み、自力では復帰できないため、定期的に moveTop で前面へ戻す。
 function startTopmostKeeper()
 {
@@ -880,10 +1131,12 @@ function startTopmostKeeper()
 
 	topmostTimer = setInterval(() =>
 	{
-		// 設定ウィンドウを開いている間はオーバーレイを押し上げず、設定ウィンドウだけを前面に保つ。オーバーレイと設定ウィンドウを毎回交互に最前面へ動かすと、半透明のオーバーレイが一瞬だけ設定ウィンドウを覆って画面がちらつくため。
-		if (settingsWin && !settingsWin.isDestroyed())
+		// 補助ウィンドウ (設定・履歴) を開いている間はオーバーレイを押し上げず、補助ウィンドウだけを前面に保つ。オーバーレイと補助ウィンドウを毎回交互に最前面へ動かすと、半透明のオーバーレイが一瞬だけ補助ウィンドウを覆って画面がちらつくため。
+		const aux = frontAuxWindow();
+
+		if (aux)
 		{
-			settingsWin.moveTop();
+			aux.moveTop();
 			return;
 		}
 
@@ -1063,7 +1316,9 @@ function createWindow()
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
 			contextIsolation: true,
-			nodeIntegration: false
+			nodeIntegration: false,
+			// フォーカスを取らない常時最前面のオーバーレイは背面ページ扱いになり、requestAnimationFrame が止められ setTimeout も1秒間隔へ丸められる。動画音声のフェードは rAF で毎フレーム音量を動かすため、これを切って前面と同じ速さで回す。CSS の opacity フェードはコンポジタが回すので影響を受けず、音だけ取り残されるのを防ぐ。
+			backgroundThrottling: false
 		}
 	});
 
@@ -1216,13 +1471,41 @@ function buildTray()
 		playbackItems.push({ label: t('tray.cancelAutoResume'), click: () => setPaused(true, 0) });
 	}
 
+	// 音声の入切は動画を含みうるレイヤー (メディア種別が画像のみでないもの) にだけ出す。画像だけのレイヤーに音声トグルは無意味なため除く。
+	const audioLayers = settings.layers
+		.map((layer, index) => ({ layer, index }))
+		.filter((entry) => entry.layer.mediaKind !== 'image');
+
+	// 対象が1レイヤーなら音声トグルを単独のチェック項目として出し、複数ならレイヤーごとのチェック項目を「音声」サブメニューへ束ねる。
+	let audioItems = [];
+
+	if (audioLayers.length === 1)
+	{
+		const entry = audioLayers[0];
+		audioItems = [{ label: t('tray.audio'), type: 'checkbox', checked: !!entry.layer.audioOn, click: () => applyLayer(entry.index, { audioOn: !entry.layer.audioOn }) }];
+	}
+	else if (audioLayers.length > 1)
+	{
+		audioItems = [{
+			label: t('tray.audio'),
+			submenu: audioLayers.map((entry) => ({
+				label: t('tray.audioLayer', { n: entry.index + 1 }),
+				type: 'checkbox',
+				checked: !!entry.layer.audioOn,
+				click: () => applyLayer(entry.index, { audioOn: !entry.layer.audioOn })
+			}))
+		}];
+	}
+
 	const menu = Menu.buildFromTemplate([
 		{ label: t('tray.header', { version: app.getVersion() }), enabled: false },
 		{ type: 'separator' },
 		{ label: t('tray.layers', { count: settings.layers.length }), enabled: false },
 		{ label: t('tray.settings'), icon: menuIcon('settings'), click: openSettings },
+		{ label: t('tray.history'), click: openHistory },
 		{ type: 'separator' },
 		...playbackItems,
+		...(audioItems.length > 0 ? [{ type: 'separator' }, ...audioItems] : []),
 		{ type: 'separator' },
 		{ label: t('tray.quit'), click: () => app.quit() }
 	]);
@@ -1285,6 +1568,7 @@ function getLoginItemState()
 function main()
 {
 	loadSettings();
+	loadHistory();
 
 	// 設定の言語と OS ロケールから表示言語を決め、辞書を読み込む。app.getLocale はアプリの ready 後でないと正しい値を返さないため、ここで行う。
 	configureLocale();
@@ -1338,6 +1622,21 @@ function main()
 	// 設定ウィンドウからのフォルダ選択要求に応える。どのレイヤーへ反映するかを受け取る。
 	ipcMain.handle('settings:choose-directory', (event, index) => chooseDirectory(typeof index === 'number' ? index : 0));
 
+	// オーバーレイからの「実際に表示した」報告を受け、表示履歴へ積む。
+	ipcMain.on('history:shown', (event, entry) => appendHistory(entry));
+
+	// 履歴ウィンドウからの履歴一覧の取得要求に応える。
+	ipcMain.handle('history:get', () => history);
+
+	// 履歴ウィンドウのタイルの右クリックメニュー要求に応える。
+	ipcMain.on('history:menu', (event, payload) =>
+	{
+		if (payload && typeof payload.path === 'string')
+		{
+			showHistoryMenu(payload.path);
+		}
+	});
+
 	// 設定ウィンドウからのログイン時起動の状態取得・変更に応える。状態は OS 側が正のため、変更時も書き込み後に読み直した実状態を返し、表示をそれへ合わせさせる。
 	ipcMain.handle('settings:get-login-item', () => getLoginItemState());
 	ipcMain.handle('settings:set-login-item', (event, value) =>
@@ -1353,14 +1652,20 @@ function main()
 	createWindow();
 	buildTray();
 
-	// テーマの切替に合わせて、トレイのアイコン (明暗で描き分け) を作り直し、あわせて設定ウィンドウのキャプションボタンの記号色も現在のテーマへ合わせ直す。
+	// テーマの切替に合わせて、トレイのアイコン (明暗で描き分け) を作り直し、あわせて設定・履歴ウィンドウのキャプションボタンの記号色も現在のテーマへ合わせ直す。
 	nativeTheme.on('updated', () =>
 	{
 		buildTray();
 
-		if (isWin && settingsWin && !settingsWin.isDestroyed())
+		if (isWin)
 		{
-			settingsWin.setTitleBarOverlay(settingsTitleBarOverlay());
+			for (const auxWin of [settingsWin, historyWin])
+			{
+				if (auxWin && !auxWin.isDestroyed())
+				{
+					auxWin.setTitleBarOverlay(auxTitleBarOverlay());
+				}
+			}
 		}
 	});
 
@@ -1425,6 +1730,15 @@ else
 	// 終了時に押し上げタイマーとカーソル追従タイマーを止める。
 	app.on('before-quit', stopTopmostKeeper);
 	app.on('before-quit', stopCursorTracking);
+
+	// 終了時に、書き込みを待たせている表示履歴があれば逃さず書き出す。
+	app.on('before-quit', () =>
+	{
+		if (historySaveTimer)
+		{
+			saveHistory();
+		}
+	});
 
 	app.whenReady().then(main);
 }

@@ -1,0 +1,166 @@
+/*
+ * 前紙 (Maegami)
+ * Copyright (C) 2026 Romly
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 3 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+:root {
+	/* 地色は塗らず透過にして、ウィンドウへ当てたシステム背景 (Mica) を透けさせる。配色は設定画面と揃える。 */
+	--bg: transparent;
+	--card-bg: rgba(255, 255, 255, 0.65);
+	--text: #1a1a1a;
+	--text-dim: #5c5c5c;
+	--border: rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: transparent;
+		--card-bg: rgba(255, 255, 255, 0.05);
+		--text: #f0f0f0;
+		--text-dim: #a0a0a0;
+		--border: rgba(255, 255, 255, 0.08);
+	}
+}
+
+html, body {
+	height: 100%;
+}
+
+body {
+	font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif;
+	color: var(--text);
+	background: var(--bg);
+	font-size: 14px;
+	-webkit-user-select: none;
+	user-select: none;
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	overflow: hidden;
+	cursor: default;
+}
+
+/* OS 標準のタイトルバーを外したぶん、ウィンドウ上端へ自前のタイトルバーを置く。地は透過のまま Mica を透かす。ここを掴んでウィンドウを動かせるようドラッグ領域にし、Windows ではこの帯の右端へ OS がキャプションボタンを重ねて描く。 */
+.titlebar {
+	flex-shrink: 0;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	padding: 0 12px;
+	-webkit-app-region: drag;
+}
+
+/* macOS では信号機ボタンが左上へ重なるため、タイトルの左を空けて重なりを避ける。 */
+.is-mac .titlebar {
+	padding-left: 78px;
+}
+
+/* OS 標準のタイトルバーに出ていたアプリアイコンを、自前の帯のタイトル文字の左へ据える。ドラッグ領域の一部なので、画像のゴーストドラッグは抑える。 */
+.titlebar-icon {
+	width: 16px;
+	height: 16px;
+	margin-right: 8px;
+	flex-shrink: 0;
+	-webkit-user-drag: none;
+}
+
+.titlebar-title {
+	font-size: 12.5px;
+	font-weight: 500;
+	color: var(--text-dim);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ギャラリーの縦スクロール領域。 */
+.gallery {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px;
+	/* スクロールバーは細く控えめにし、つまみだけ半透明のグレーで地に馴染ませる。溝は透かしてシステム背景を見せる。 */
+	scrollbar-width: thin;
+	scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+	.gallery {
+		scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+	}
+}
+
+/* カラムを横へ並べる入れ物。タイルの敷き詰め (どのカラムへ入れるか) は JS が決める。 */
+.columns {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.column {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* 履歴1件ぶんのタイル。メディアの実寸から aspect-ratio で高さを予約するため、読み込み前から敷き詰めの形が崩れない。 */
+.tile {
+	position: relative;
+	background: var(--card-bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.tile-media {
+	display: block;
+	width: 100%;
+	height: auto;
+	-webkit-user-drag: none;
+}
+
+/* 動画のタイルに添える再生マーク。サムネイル (先頭フレーム) だけでは画像と見分けが付かないため。 */
+.badge {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: rgba(0, 0, 0, 0.55);
+	color: #ffffff;
+	font-size: 11px;
+	line-height: 1.6;
+	pointer-events: none;
+}
+
+/* 履歴が空のときの案内。 */
+.empty {
+	color: var(--text-dim);
+	font-size: 13px;
+	line-height: 1.8;
+	text-align: center;
+	padding: 48px 24px;
+}
+
+.hidden {
+	display: none;
+}

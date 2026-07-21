@@ -365,6 +365,7 @@ function wireLayer(root, index)
 	wireSlider(root, '.display-duration', '.display-duration-value', (v) => formatSeconds(v * 1000), (v) => v * 1000, index, 'displayDuration');
 	wireSlider(root, '.fade-duration', '.fade-duration-value', (v) => formatSeconds(v * 1000), (v) => Math.round(v * 1000), index, 'fadeDuration');
 	wireSlider(root, '.gap-duration', '.gap-duration-value', (v) => formatSeconds(v * 1000), (v) => Math.round(v * 1000), index, 'gapDuration');
+	wireSlider(root, '.volume', '.volume-value', (v) => v + '%', (v) => v, index, 'volume');
 
 	root.querySelector('.remove-layer').addEventListener('click', () =>
 	{
@@ -487,6 +488,7 @@ function refreshLayer(index, layer)
 	root.querySelector('.video-play-full').checked = !!layer.videoPlayFull;
 	setSlider(root, '.fade-duration', '.fade-duration-value', (layer.fadeDuration / 1000).toFixed(1), (v) => formatSeconds(v * 1000));
 	setSlider(root, '.gap-duration', '.gap-duration-value', (layer.gapDuration / 1000).toFixed(1), (v) => formatSeconds(v * 1000));
+	setSlider(root, '.volume', '.volume-value', layer.volume, (v) => v + '%');
 }
 
 

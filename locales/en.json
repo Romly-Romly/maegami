@@ -103,6 +103,9 @@
 	"layer.videoPlayFull.title": "Play videos to the end",
 	"layer.videoPlayFull.desc": "Videos longer than the display interval won't switch until playback finishes.",
 
+	"layer.volume.title": "Volume",
+	"layer.volume.desc": "Video volume when audio output is enabled.",
+
 	"layer.fadeDuration.title": "Fade duration",
 	"layer.fadeDuration.desc": "How long the fade-in and fade-out take.",
 
@@ -117,9 +120,16 @@
 
 	"dialog.chooseFolder": "Choose a folder of images and videos to display",
 
+	"history.windowTitle": "Maegami History",
+	"history.empty": "No history yet. Images and videos appear here as they are shown, newest first.",
+	"history.menu.copyPath": "Copy path",
+	"history.menu.showInFolder": "Show in Explorer",
+	"history.menu.revealInFinder": "Reveal in Finder",
+
 	"tray.header": "Maegami {version}",
 	"tray.layers": "Layers: {count}",
 	"tray.settings": "Settings...",
+	"tray.history": "History...",
 	"tray.play": "Play",
 	"tray.pause": "Pause",
 	"tray.next": "Next",
@@ -132,6 +142,8 @@
 	"tray.resume30": "Resume in 30 min",
 	"tray.resume60": "Resume in 1 hour",
 	"tray.resume120": "Resume in 2 hours",
+	"tray.audio": "Play audio",
+	"tray.audioLayer": "Layer {n}",
 
 	"overlay.initial": "No folder selected — choose an image/video folder from the tray icon",
 	"overlay.noFolder": "No folder selected — choose an image/video folder for each layer in Settings",

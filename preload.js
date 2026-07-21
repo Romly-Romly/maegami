@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld('maegamiI18n', {
 	extensions: i18nState && i18nState.extensions ? i18nState.extensions : []
 });
 
-// 描画プロセスへは状態購読と再要求の口だけを公開する。
+// 描画プロセスへは状態購読と再要求、それに「実際に表示した」の履歴報告の口だけを公開する。
 contextBridge.exposeInMainWorld('maegami', {
 	onState: (callback) =>
 	{
@@ -67,7 +67,22 @@ contextBridge.exposeInMainWorld('maegami', {
 	requestState: () =>
 	{
 		ipcRenderer.send('request-state');
+	},
+	reportShown: (entry) =>
+	{
+		ipcRenderer.send('history:shown', entry);
 	}
+});
+
+// 履歴ウィンドウへは履歴一覧の取得・新しい1件の追記通知の購読・タイルのコンテキストメニュー表示を公開する。
+contextBridge.exposeInMainWorld('maegamiHistory', {
+	get: () => ipcRenderer.invoke('history:get'),
+	onAppended: (callback) =>
+	{
+		ipcRenderer.on('history:appended', (event, entry) => callback(entry));
+	},
+	showMenu: (itemPath) => ipcRenderer.send('history:menu', { path: itemPath }),
+	platform: process.platform
 });
 
 // 設定ウィンドウへは現在値とアプリ版数の取得・全体設定とレイヤー設定の変更・レイヤーの追加削除・フォルダ選択・ログイン時起動の取得と変更・変更通知の購読を公開する。

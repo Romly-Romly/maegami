@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!--
+	前紙 (Maegami)
+	Copyright (C) 2026 Romly
+
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License version 3 as
+	published by the Free Software Foundation.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<html lang="ja">
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src file:; media-src file:; style-src 'self' 'unsafe-inline';">
+	<title>前紙 の表示履歴</title>
+	<link rel="stylesheet" href="history.css">
+</head>
+<body>
+	<div class="titlebar">
+		<img class="titlebar-icon" src="../assets/icon.ico" alt="" aria-hidden="true">
+		<div class="titlebar-title" data-i18n="history.windowTitle">前紙 の表示履歴</div>
+	</div>
+	<main id="gallery" class="gallery">
+		<p id="empty" class="empty hidden" data-i18n="history.empty">まだ履歴がありません。表示された画像や動画が、新しい順にここへ並びます。</p>
+		<div id="columns" class="columns"></div>
+	</main>
+	<script src="history.js"></script>
+</body>
+</html>

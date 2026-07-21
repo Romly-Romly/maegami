@@ -178,6 +178,7 @@ function removeCurrent(engine)
 			engine.lastCornerIndex = engine.currentElement._cornerIndex;
 		}
 
+		cancelVolumeRamp(engine.currentElement);
 		engine.currentElement.remove();
 		engine.currentElement = null;
 	}
@@ -209,6 +210,92 @@ function hideMessage()
 
 
 
+// レイヤーの音声設定から、動画に当てる目標音量 (0〜1) を求める。0〜100 の百分率をクランプして直す。
+function videoTargetVolume(config)
+{
+	const percent = (config && config.volume !== undefined) ? config.volume : 100;
+	return Math.min(Math.max(percent, 0), 100) / 100;
+}
+
+
+
+
+// 動画要素の音声を、レイヤーの設定に合わせてミュートと音量へ反映する。音声オフのレイヤーや画像要素には効かせない。ミュートは常に合わせ、音量はフェードのランプが動いていない時だけ直接当てる。フェード中に直接書き換えると、毎フレーム音量を動かしているランプと衝突して音が跳ねるため。
+function applyVideoAudio(engine, el)
+{
+	if (!el || el.tagName !== 'VIDEO')
+	{
+		return;
+	}
+
+	const config = engine.config || {};
+	el.muted = !config.audioOn;
+
+	if (!el._volumeRaf)
+	{
+		el.volume = videoTargetVolume(config);
+	}
+}
+
+
+
+
+// 動画の音量を、与えた所要時間をかけて from から to へ寄せる。CSS の opacity は映像を薄めるだけで音量には効かないため、画像のフェードと同じ長さで volume を別に動かし、音も映像と一緒にフェードさせる。進み方は映像の ease-in-out に寄せた smoothstep で両端をなだらかにする。進行中のランプがあれば取り消してから始める。
+function rampVolume(el, from, to, durationMs)
+{
+	cancelVolumeRamp(el);
+
+	if (durationMs <= 0)
+	{
+		el.volume = to;
+		return;
+	}
+
+	el.volume = from;
+
+	// 最初のフレームの時刻を起点に経過割合を測る。requestAnimationFrame が渡す時刻をそのまま使い、別の時計を持たない。
+	let startTime = null;
+
+	const step = (now) =>
+	{
+		if (startTime === null)
+		{
+			startTime = now;
+		}
+
+		const t = Math.min((now - startTime) / durationMs, 1);
+		const eased = t * t * (3 - 2 * t);
+		el.volume = from + (to - from) * eased;
+
+		if (t < 1)
+		{
+			el._volumeRaf = requestAnimationFrame(step);
+		}
+		else
+		{
+			el._volumeRaf = null;
+		}
+	};
+
+	el._volumeRaf = requestAnimationFrame(step);
+}
+
+
+
+
+// 進行中の音量ランプがあれば止める。要素の破棄時や次のランプを始める前に呼び、宙に浮いたループが残らないようにする。
+function cancelVolumeRamp(el)
+{
+	if (el && el._volumeRaf)
+	{
+		cancelAnimationFrame(el._volumeRaf);
+		el._volumeRaf = null;
+	}
+}
+
+
+
+
 // メディア要素 (img または video) を生成する。
 function createMediaElement(engine, item)
 {
@@ -222,6 +309,9 @@ function createMediaElement(engine, item)
 		el.loop = true;
 		el.autoplay = true;
 		el.playsInline = true;
+
+		// レイヤーの音声設定に合わせてミュートと音量を当てる。音声オフのレイヤーではミュートのまま。
+		applyVideoAudio(engine, el);
 	}
 	else
 	{
@@ -1040,11 +1130,26 @@ function showNext(engine)
 			return;
 		}
 
+		// 実際に画面へ出る一枚を表示履歴として本体へ報告する。実寸は履歴ギャラリーの敷き詰めで高さの予約に使う。読み込みに失敗して寸法が取れないものは報告しない。
+		const mediaWidth = (item.type === 'video') ? el.videoWidth : el.naturalWidth;
+		const mediaHeight = (item.type === 'video') ? el.videoHeight : el.naturalHeight;
+
+		if (item.path && mediaWidth > 0 && mediaHeight > 0)
+		{
+			window.maegami.reportShown({ type: item.type, path: item.path, url: item.url, width: mediaWidth, height: mediaHeight });
+		}
+
 		applyLayout(engine, el);
 
 		if (item.type === 'video')
 		{
 			el.play().catch(() => {});
+
+			// 映像のフェードインに音を合わせるため、可視化までは無音から始める。フェードが無い設定では設定どおりの音量のまま鳴らす。
+			if (fade > 0)
+			{
+				el.volume = 0;
+			}
 		}
 
 		// 大きさが確定してから漂いの計画を組む。漂わない設定なら null になり、以後の移動処理は素通りする。
@@ -1090,6 +1195,12 @@ function showNext(engine)
 				if (shadow)
 				{
 					shadow.el.classList.add('visible');
+				}
+
+				// 映像のフェードインに合わせ、無音から設定音量へ立ち上げる。フェードが無い設定では既に設定音量で鳴っているので何もしない。
+				if (item.type === 'video' && fade > 0)
+				{
+					rampVolume(el, 0, videoTargetVolume(config), fade);
 				}
 
 				if (drift)
@@ -1140,6 +1251,12 @@ function showNext(engine)
 			if (shadow)
 			{
 				shadow.el.classList.remove('visible');
+			}
+
+			// 映像のフェードアウトに合わせ、今の音量から無音へ絞る。フェードが無い設定では映像が即座に消えるのに合わせ、音量ランプは張らず切り替えに任せる。
+			if (item.type === 'video' && fade > 0)
+			{
+				rampVolume(el, el.volume, 0, fade);
 			}
 
 			if (drift && fade > 0)
@@ -1251,6 +1368,9 @@ function applyEngineDisplay(engine, config)
 		applyEffect(engine, engine.currentElement);
 		applyLayout(engine, engine.currentElement);
 		syncShadowBox(engine);
+
+		// トレイや設定画面での音声・音量の変更を、再生中の動画へその場で当てる。
+		applyVideoAudio(engine, engine.currentElement);
 	}
 }
 

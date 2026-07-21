@@ -2,6 +2,14 @@
 
 > # 🇯🇵 [日本語の変更履歴はこちら →](CHANGELOG.ja.md)
 
+## [1.6.0] - 2026-07-22
+
+### Added
+- Added a display history. You can browse the history of displayed items in a gallery view.
+- Added audio playback for videos. Audio output can be enabled per layer, and the volume can be adjusted in each layer's settings.
+
+
+
 ## [1.5.2] - 2026-07-16
 
 ### Added

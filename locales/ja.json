@@ -103,6 +103,9 @@
 	"layer.videoPlayFull.title": "動画を最後まで再生",
 	"layer.videoPlayFull.desc": "表示間隔より長い動画は、再生が終わるまで切り替えない。",
 
+	"layer.volume.title": "音量",
+	"layer.volume.desc": "音声出力有効時の動画の音量。",
+
 	"layer.fadeDuration.title": "フェード時間",
 	"layer.fadeDuration.desc": "フェードイン／アウトにかかる時間。",
 
@@ -117,9 +120,16 @@
 
 	"dialog.chooseFolder": "表示する画像・動画のフォルダを選択",
 
+	"history.windowTitle": "前紙 の表示履歴",
+	"history.empty": "まだ履歴がありません。表示された画像や動画が、新しい順にここへ並びます。",
+	"history.menu.copyPath": "パスをコピー",
+	"history.menu.showInFolder": "エクスプローラーで開く",
+	"history.menu.revealInFinder": "Finder で表示",
+
 	"tray.header": "前紙 {version}",
 	"tray.layers": "レイヤー: {count} 枚",
 	"tray.settings": "設定...",
+	"tray.history": "表示履歴...",
 	"tray.play": "再生",
 	"tray.pause": "一時停止",
 	"tray.next": "次へ",
@@ -132,6 +142,8 @@
 	"tray.resume30": "30分後に再開",
 	"tray.resume60": "1時間後に再開",
 	"tray.resume120": "2時間後に再開",
+	"tray.audio": "音声を鳴らす",
+	"tray.audioLayer": "レイヤー {n}",
 
 	"overlay.initial": "フォルダ未選択 — トレイアイコンから画像・動画フォルダを選んでください",
 	"overlay.noFolder": "フォルダ未選択 — 設定の各レイヤーで画像・動画フォルダを選んでください",
